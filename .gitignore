@@ -1,3 +1,2 @@
 .zig-cache
-examples/native_activity_minimum/zig-out/lib
-examples/native_activity_minimum/zig-out/bin
+zig-out

@@ -37,6 +37,7 @@ pub const ApkOpts = struct {
     artifact: *std.Build.Step.Compile,
     keystore_file: std.Build.LazyPath,
     keystore_password: []const u8,
+    resource_dir: std.Build.LazyPath,
 };
 
 pub fn makeApk(self: @This(), b: *std.Build, opts: ApkOpts) std.Build.LazyPath {
@@ -50,7 +51,7 @@ pub fn makeApk(self: @This(), b: *std.Build, opts: ApkOpts) std.Build.LazyPath {
     //
     const aapt2_compile = self.build_tools.aapt2_compile(
         b,
-        b.path("res"),
+        opts.resource_dir,
     );
 
     const aapt2_link = self.build_tools.aapt2_link(
@@ -83,7 +84,8 @@ pub fn makeApk(self: @This(), b: *std.Build, opts: ApkOpts) std.Build.LazyPath {
     );
     _ = apk_contents.addCopyFile(
         opts.artifact.getEmittedBin(),
-        b.fmt("lib/arm64-v8a/lib{s}.so", .{opts.artifact.name}),
+        // b.fmt("lib/arm64-v8a/lib{s}.so", .{opts.artifact.name}),
+        "lib/arm64-v8a/libmain.so",
     );
 
     const uncompressed = b.addWriteFiles();
@@ -119,4 +121,40 @@ pub fn makeApk(self: @This(), b: *std.Build, opts: ApkOpts) std.Build.LazyPath {
         zipalign.output,
     );
     return apksigner.output;
+}
+
+const ANDROID_MANIFEST_TEMPLATE_HEADER =
+    \\<?xml version="1.0" encoding="utf-8" standalone="no"?>
+    \\<manifest xmlns:tools="http://schemas.android.com/tools" xmlns:android="http://schemas.android.com/apk/res/android" package="{s}" android:versionCode="1">
+;
+const ANDROID_MANIFEST_TEMPLATE_BODY =
+    \\<uses-sdk android:minSdkVersion="31" android:targetSdkVersion="{}" />
+    \\<application android:debuggable="true" android:hasCode="false" android:label="{s}" tools:replace="android:icon,android:theme,android:allowBackup,label">
+    \\<activity android:configChanges="keyboardHidden|orientation" android:name="android.app.NativeActivity" android:exported="true">
+    \\<meta-data android:name="android.app.lib_name" android:value="main"/>
+    \\<intent-filter>
+    \\<action android:name="android.intent.action.MAIN"/>
+    \\<category android:name="android.intent.category.LAUNCHER"/>
+    \\</intent-filter>
+    \\</activity>
+    \\</application>
+    \\</manifest>
+;
+
+pub fn generateAndroidManifest(
+    self: @This(),
+    b: *std.Build,
+    pkgname: []const u8,
+    label: []const u8,
+) ![]const u8 {
+    var w = std.Io.Writer.Allocating.init(b.allocator);
+    try w.writer.print(ANDROID_MANIFEST_TEMPLATE_HEADER, .{pkgname});
+    // for (config.permissions.items) |perm| {
+    //     try w.writer.print("<uses-permission android:name=\"{s}\"/>\n", .{perm});
+    // }
+    try w.writer.print(ANDROID_MANIFEST_TEMPLATE_BODY, .{
+        self.api_level,
+        label,
+    });
+    return try w.toOwnedSlice();
 }
