@@ -1,0 +1,7 @@
+.{
+    .name = .zbk,
+    .version = "0.0.1",
+    .minimum_zig_version = "0.15.1",
+    .paths = .{""},
+    .fingerprint = 0x2b8c8561ded30cea,
+}

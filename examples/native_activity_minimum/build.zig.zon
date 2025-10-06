@@ -1,0 +1,14 @@
+.{
+    .name = .native_activity_minimum,
+    .version = "0.0.0",
+    .fingerprint = 0xbf4852d1d15283ab, // Changing this has security and trust implications.
+    .minimum_zig_version = "0.15.1",
+    .dependencies = .{
+        .zbk = .{
+            .path = "../..",
+        },
+    },
+    .paths = .{
+        "",
+    },
+}
