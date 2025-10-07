@@ -4,11 +4,11 @@ path: []const u8,
 
 pub fn init(b: *std.Build, android_home: []const u8) !@This() {
     return @This(){
-        .path = try getBuildToolPath(b, android_home),
+        .path = try getBuildToolsPath(b, android_home),
     };
 }
 
-fn getBuildToolPath(b: *std.Build, android_home: []const u8) ![]const u8 {
+fn getBuildToolsPath(b: *std.Build, android_home: []const u8) ![]const u8 {
     var root = try std.fs.openDirAbsolute(android_home, .{});
     defer root.close();
 

@@ -1,6 +1,7 @@
 const std = @import("std");
 
 pub const android = @import("android/android.zig");
+pub const cpp = @import("cpp/cpp.zig");
 
 pub fn getEnvPath(allocator: std.mem.Allocator, env_name: []const u8) ![]const u8 {
     var env = try std.process.getEnvMap(allocator);

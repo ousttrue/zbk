@@ -3,6 +3,7 @@ const zbk = @import("zbk");
 const ndk = zbk.android.ndk;
 
 const API_LEVEL = 35;
+const PKG_NAME = "org.zbk.hello";
 
 pub fn build(b: *std.Build) !void {
     const target = b.resolveTargetQuery(.{
@@ -18,9 +19,9 @@ pub fn build(b: *std.Build) !void {
 
     // build libmain.so
     const lib = b.addLibrary(.{
-        .name = "main",
+        .name = "zbk_hello",
         .linkage = .dynamic,
-        .root_module = b.addModule("main", .{
+        .root_module = b.addModule("zbk_hello", .{
             .target = target,
             .optimize = optimize,
             .root_source_file = b.path("src/main.zig"),
@@ -51,15 +52,22 @@ pub fn build(b: *std.Build) !void {
 
     // make apk from
     const apk = apk_builder.makeApk(b, .{
-        .artifact = lib,
-        .android_manifest = b.path("AndroidManifest.xml"),
+        .android_manifest = try apk_builder.generateAndroidManifest(b, PKG_NAME, lib.name),
+        .resource_dir = b.path("res"),
         .keystore_password = keystore_password,
         .keystore_file = keystore.output,
+        .copy_list = &.{
+            .{ .src = lib.getEmittedBin() },
+        },
     });
     const install = b.addInstallFile(apk, "bin/hello.apk");
     b.getInstallStep().dependOn(&install.step);
 
     // adb install
-
     // adb run
+    const run_step = b.step("run", "Install and run the application on an Android device");
+    const adb_install = apk_builder.platform_tools.adb_install(b, install.source);
+    const adb_start = apk_builder.platform_tools.adb_start(b, .{ .package_name = PKG_NAME });
+    adb_start.step.dependOn(&adb_install.step);
+    run_step.dependOn(&adb_start.step);
 }

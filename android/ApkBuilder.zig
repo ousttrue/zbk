@@ -1,9 +1,11 @@
 const std = @import("std");
 const BuildTools = @import("BuildTools.zig");
+const PlatformTools = @import("PlatformTools.zig");
 const Jdk = @import("Jdk.zig");
 
 jdk: Jdk,
 build_tools: BuildTools,
+platform_tools: PlatformTools,
 api_level: u8,
 root_jar: []const u8,
 
@@ -27,17 +29,23 @@ pub fn init(
     return @This(){
         .jdk = try Jdk.init(b, opts.java_home),
         .build_tools = try BuildTools.init(b, opts.android_home),
+        .platform_tools = try PlatformTools.init(b, opts.android_home),
         .api_level = opts.api_level,
         .root_jar = root_jar,
     };
 }
 
+pub const Copy = struct {
+    src: std.Build.LazyPath,
+    dst: []const u8 = "lib/arm64-v8a/libmain.so",
+};
+
 pub const ApkOpts = struct {
     android_manifest: std.Build.LazyPath,
-    artifact: *std.Build.Step.Compile,
     keystore_file: std.Build.LazyPath,
     keystore_password: []const u8,
     resource_dir: std.Build.LazyPath,
+    copy_list: []const Copy,
 };
 
 pub fn makeApk(self: @This(), b: *std.Build, opts: ApkOpts) std.Build.LazyPath {
@@ -82,11 +90,13 @@ pub fn makeApk(self: @This(), b: *std.Build, opts: ApkOpts) std.Build.LazyPath {
         "",
         .{ .exclude_extensions = &.{"arsc"} },
     );
-    _ = apk_contents.addCopyFile(
-        opts.artifact.getEmittedBin(),
-        // b.fmt("lib/arm64-v8a/lib{s}.so", .{opts.artifact.name}),
-        "lib/arm64-v8a/libmain.so",
-    );
+
+    for (opts.copy_list) |copy| {
+        _ = apk_contents.addCopyFile(
+            copy.src,
+            copy.dst,
+        );
+    }
 
     const uncompressed = b.addWriteFiles();
     uncompressed.step.name = "uncompressed";
@@ -146,7 +156,7 @@ pub fn generateAndroidManifest(
     b: *std.Build,
     pkgname: []const u8,
     label: []const u8,
-) ![]const u8 {
+) !std.Build.LazyPath {
     var w = std.Io.Writer.Allocating.init(b.allocator);
     try w.writer.print(ANDROID_MANIFEST_TEMPLATE_HEADER, .{pkgname});
     // for (config.permissions.items) |perm| {
@@ -156,5 +166,7 @@ pub fn generateAndroidManifest(
         self.api_level,
         label,
     });
-    return try w.toOwnedSlice();
+    const content = try w.toOwnedSlice();
+    const wf = b.addWriteFile("AndroidManifest.xml", content);
+    return wf.getDirectory().path(b, "AndroidManifest.xml");
 }

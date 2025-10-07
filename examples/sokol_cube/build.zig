@@ -83,23 +83,30 @@ pub fn build(b: *std.Build) !void {
             .api_level = API_LEVEL,
         });
 
-        const android_manifest = b.addWriteFile(
-            "AndroidManifest.xml",
-            try apk_builder.generateAndroidManifest(b, PKG_NAME, bin.name),
-        );
-
         const keystore_password = "example_password";
         const keystore = apk_builder.jdk.makeKeystore(b, keystore_password);
 
         // make apk from
         const apk = apk_builder.makeApk(b, .{
-            .artifact = bin,
-            .android_manifest = android_manifest.getDirectory().path(b, "AndroidManifest.xml"),
+            .copy_list = &.{.{ .src = bin.getEmittedBin() }},
+            .android_manifest = try apk_builder.generateAndroidManifest(b, PKG_NAME, bin.name),
             .keystore_password = keystore_password,
             .keystore_file = keystore.output,
             .resource_dir = b.path("res"),
         });
         const install = b.addInstallFile(apk, "bin/cube.apk");
         b.getInstallStep().dependOn(&install.step);
+
+        // adb install
+        // adb run
+        const run_step = b.step("run", "Install and run the application on an Android device");
+        const adb_install = apk_builder.platform_tools.adb_install(b, install.source);
+        const adb_start = apk_builder.platform_tools.adb_start(b, .{ .package_name = PKG_NAME });
+        adb_start.step.dependOn(&adb_install.step);
+        run_step.dependOn(&adb_start.step);
+    } else {
+        const run_step = b.step("run", "Install and run the application on an Android device");
+        const run = b.addRunArtifact(bin);
+        run_step.dependOn(&run.step);
     }
 }
