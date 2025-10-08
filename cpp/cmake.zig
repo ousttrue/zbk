@@ -9,9 +9,9 @@ pub const CmakeOptions = struct {
     // if multi target, should use different name for each target.
     build_dir_name: []const u8 = "build",
     ndk_path: ?[]const u8 = null,
-    // dynamic: bool = true,
     build_type: CmakeBuildType = .Release,
     envmap: ?*std.process.EnvMap = null,
+    args: []const []const u8 = &.{},
 };
 
 pub const CmakeStep = struct {
@@ -68,6 +68,10 @@ pub fn build(b: *std.Build, opts: CmakeOptions) !CmakeStep {
         .Release => {
             cmake_configure.addArg("-DCMAKE_BUILD_TYPE=Release");
         },
+    }
+
+    if (opts.args.len > 0) {
+        cmake_configure.addArgs(opts.args);
     }
 
     //
