@@ -6,10 +6,12 @@ pub const CmakeBuildType = union(enum) {
 
 pub const CmakeOptions = struct {
     source: std.Build.LazyPath,
-    build_dir_name: []const u8,
+    // if multi target, should use different name for each target.
+    build_dir_name: []const u8 = "build",
     ndk_path: ?[]const u8 = null,
-    dynamic: bool = true,
+    // dynamic: bool = true,
     build_type: CmakeBuildType = .Release,
+    envmap: ?*std.process.EnvMap = null,
 };
 
 pub const CmakeStep = struct {
@@ -29,6 +31,13 @@ pub fn build(b: *std.Build, opts: CmakeOptions) !CmakeStep {
         "Ninja",
     });
     cmake_configure.setName("cmake configure");
+    if (opts.envmap) |map| {
+        var it = map.iterator();
+        while (it.next()) |kv| {
+            // std.log.debug("configure: {s} => {s}", .{kv.key_ptr.*, kv.value_ptr.*});
+            cmake_configure.setEnvironmentVariable(kv.key_ptr.*, kv.value_ptr.*);
+        }
+    }
 
     // -S
     cmake_configure.addArg("-S");
@@ -50,12 +59,6 @@ pub fn build(b: *std.Build, opts: CmakeOptions) !CmakeStep {
         });
     }
 
-    if (opts.dynamic) {
-        cmake_configure.addArg("-DDYNAMIC_LOADER=ON");
-    } else {
-        cmake_configure.addArg("-DDYNAMIC_LOADER=OFF");
-    }
-
     cmake_configure.addArgs(&.{
         "-DCMAKE_POLICY_VERSION_MINIMUM=3.10",
         "-DCMAKE_POLICY_DEFAULT_CMP0148=OLD",
@@ -72,8 +75,15 @@ pub fn build(b: *std.Build, opts: CmakeOptions) !CmakeStep {
     //
     const cmake_build = b.addSystemCommand(&.{ "cmake", "--build" });
     cmake_build.setName("cmake build");
+    if (opts.envmap) |map| {
+        var it = map.iterator();
+        while (it.next()) |kv| {
+            // std.log.debug("build: {s} => {s}", .{kv.key_ptr.*, kv.value_ptr.*});
+            cmake_build.setEnvironmentVariable(kv.key_ptr.*, kv.value_ptr.*);
+        }
+    }
     cmake_build.addDirectoryArg(build_dir);
-    cmake_build.step.dependOn(&cmake_configure.step);
+    // cmake_build.step.dependOn(&cmake_configure.step);
 
     //
     // install

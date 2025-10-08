@@ -1,0 +1,12 @@
+.{
+    .name = .cmake,
+    .version = "0.0.1",
+    .minimum_zig_version = "0.15.1",
+    .paths = .{""},
+    .fingerprint = 0x233853f2e960e206,
+    .dependencies = .{
+        .zbk = .{
+            .path = "../..",
+        },
+    },
+}
