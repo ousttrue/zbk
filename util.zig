@@ -1,11 +1,14 @@
 const std = @import("std");
 
-pub fn getEnvPath(allocator: std.mem.Allocator, env_name: []const u8) ![]const u8 {
-    var env = try std.process.getEnvMap(allocator);
+pub fn getEnvPath(allocator: std.mem.Allocator, env_name: []const u8) ?[]const u8 {
+    var env = std.process.getEnvMap(allocator) catch @panic("OOM");
     defer env.deinit();
-    const env_path = try allocator.dupe(u8, env.get(env_name) orelse {
-        return error.no_android_home;
-    });
+
+    const env_value = env.get(env_name) orelse {
+        return null;
+    };
+    const env_path = allocator.dupe(u8, env_value) catch @panic("OOM");
+
     for (env_path) |*ch| {
         if (ch.* == '\\') {
             ch.* = '/';

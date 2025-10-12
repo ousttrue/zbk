@@ -1,25 +1,29 @@
 const std = @import("std");
 const getEnvPath = @import("../util.zig").getEnvPath;
 
-pub fn getVswhereFromEnv(allocator: std.mem.Allocator, env: []const u8) ![]const u8 {
-    const program_files = try getEnvPath(allocator, env);
-    const path = try std.fmt.allocPrint(
+pub fn getVswhereFromEnv(allocator: std.mem.Allocator, env: []const u8) ?[]const u8 {
+    const program_files = getEnvPath(allocator, env) orelse {
+        return null;
+    };
+    const path = std.fmt.allocPrint(
         allocator,
         "{s}/Microsoft Visual Studio/Installer/vswhere.exe",
         .{program_files},
-    );
-    try std.fs.accessAbsolute(path, .{});
+    ) catch @panic("OOM");
+    std.fs.accessAbsolute(path, .{}) catch {
+        return null;
+    };
     return path;
 }
 
-pub fn getVswhere(allocator: std.mem.Allocator) ![]const u8 {
+pub fn getVswhere(allocator: std.mem.Allocator) ?[]const u8 {
     if (getVswhereFromEnv(allocator, "ProgramFiles(x86)")) |vswhere| {
         return vswhere;
-    } else |_| {}
+    }
     if (getVswhereFromEnv(allocator, "ProgramFiles")) |vswhere| {
         return vswhere;
-    } else |_| {}
-    return error.vswhere_not_found;
+    }
+    return null;
 }
 
 pub const PrintLazyPath = struct {
@@ -219,7 +223,9 @@ pub const VcEnv = struct {
         var arena = std.heap.ArenaAllocator.init(allocator);
         defer arena.deinit();
 
-        const vswhere = try getVswhere(arena.allocator());
+        const vswhere = getVswhere(arena.allocator()) orelse {
+            return error.no_vswhere;
+        };
         std.log.debug("vswhere => {s}", .{vswhere});
 
         const vcinstall = try getVcInstall(arena.allocator(), vswhere);
