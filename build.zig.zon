@@ -4,4 +4,27 @@
     .minimum_zig_version = "0.15.1",
     .paths = .{""},
     .fingerprint = 0x2b8c8561ded30cea,
+
+    .dependencies = .{
+        .openxr_1_0_26 = .{
+            .url = "https://github.com/KhronosGroup/OpenXR-Docs/archive/refs/tags/release-1.0.26.zip",
+            .hash = "N-V-__8AAKygIwGITW1wmECd1RPin52RN9vsMiU6hEoo8V_q",
+        },
+        .openxr_1_0_27 = .{
+            .url = "https://github.com/KhronosGroup/OpenXR-Docs/archive/refs/tags/release-1.0.27.zip",
+            .hash = "N-V-__8AADJUKAFutMk3_CKuYn6RSB58_PCyKMYJSTHyuZw-",
+        },
+        .openxr_1_0_34 = .{
+            .url = "https://github.com/KhronosGroup/OpenXR-Docs/archive/refs/tags/release-1.0.34.zip",
+            .hash = "N-V-__8AAOLZYgGBeFPcGvXV9KQfklOt1_z1AH5Ztz_d2mxC",
+        },
+        .openxr_1_1_36 = .{
+            .url = "https://github.com/KhronosGroup/OpenXR-Docs/archive/refs/tags/release-1.1.36.zip",
+            .hash = "N-V-__8AAL-3bwFfGHjuYVhH_skWBr-kWXW6lUYyd41AjM39",
+        },
+        .openxr_1_1_52 = .{
+            .url = "https://github.com/KhronosGroup/OpenXR-Docs/archive/refs/tags/release-1.1.52.zip",
+            .hash = "N-V-__8AAKwxEAIeq0CwVGzHInC_oPyol_C5hBX3HBAdrtMI",
+        },
+    },
 }
