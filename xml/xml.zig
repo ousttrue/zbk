@@ -11,26 +11,26 @@ pub fn parse(allocator: std.mem.Allocator, src: []const u8) !Document {
         .root = undefined,
     };
 
-    try parser.skipComments();
+    try parser.reader.skipComments();
 
     doc.xml_decl = try parser.parseDeclaration();
-    _ = parser.eatWs();
-    _ = parser.eatStr("<!DOCTYPE xml>");
-    _ = parser.eatWs();
+    _ = parser.reader.eatWs();
+    _ = parser.reader.eatStr("<!DOCTYPE xml>");
+    _ = parser.reader.eatWs();
 
     // xr.xml currently has 2 processing instruction tags, they're handled manually for now
     _ = try parser.parseDeclaration();
-    _ = parser.eatWs();
+    _ = parser.reader.eatWs();
     _ = try parser.parseDeclaration();
-    _ = parser.eatWs();
+    _ = parser.reader.eatWs();
 
-    try parser.skipComments();
+    try parser.reader.skipComments();
 
     doc.root = (try parser.parseElement()) orelse return error.InvalidDocument;
-    _ = parser.eatWs();
-    try parser.skipComments();
+    _ = parser.reader.eatWs();
+    try parser.reader.skipComments();
 
-    if (parser.peek() != null) return error.InvalidDocument;
+    if (parser.reader.peek() != null) return error.InvalidDocument;
 
     return doc;
 }
