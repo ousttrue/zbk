@@ -1,7 +1,7 @@
 const std = @import("std");
 const getEnvPath = @import("../util.zig").getEnvPath;
 
-pub fn getVswhereFromEnv(allocator: std.mem.Allocator, env: []const u8) ?[]const u8 {
+fn getVswhereFromEnv(allocator: std.mem.Allocator, env: []const u8) ?[]const u8 {
     const program_files = getEnvPath(allocator, env) orelse {
         return null;
     };
@@ -161,7 +161,7 @@ fn system(allocator: std.mem.Allocator, argv: []const []const u8) ?[]const u8 {
     return output;
 }
 
-fn getVcInstall(allocator: std.mem.Allocator, vswhere: []const u8) ![]const u8 {
+pub fn getVcInstall(allocator: std.mem.Allocator, vswhere: []const u8) ?[]const u8 {
     if (system(allocator, &.{
         vswhere,
         "-latest",
@@ -201,7 +201,7 @@ fn getVcInstall(allocator: std.mem.Allocator, vswhere: []const u8) ![]const u8 {
         return output;
     }
 
-    return error.vc_not_found;
+    return null;
 }
 
 const ENVS = [_][]const u8{

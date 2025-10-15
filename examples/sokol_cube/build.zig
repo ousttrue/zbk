@@ -55,9 +55,9 @@ pub fn build(b: *std.Build) !void {
     b.installArtifact(bin);
 
     if (target.result.abi.isAndroid()) {
-        const android_home = try zbk.getEnvPath(b.allocator, "ANDROID_HOME");
+        const android_home = zbk.getEnvPath(b.allocator, "ANDROID_HOME") orelse return error.NO_ANDROID_HOME;
         const ndk_path = try ndk.getPath(b, .{ .android_home = android_home });
-        const java_home = try zbk.getEnvPath(b.allocator, "JAVA_HOME");
+        const java_home = zbk.getEnvPath(b.allocator, "JAVA_HOME") orelse return error.NO_JAVA_HOME;
 
         // error: error: unable to provide libc for target 'aarch64-linux.5.10...6.16-android.29'
         const libc_file = try ndk.LibCFile.make(b, ndk_path, target, API_LEVEL);

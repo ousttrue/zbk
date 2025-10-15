@@ -13,9 +13,9 @@ pub fn build(b: *std.Build) !void {
     });
     const optimize = b.standardOptimizeOption(.{});
 
-    const android_home = try zbk.getEnvPath(b.allocator, "ANDROID_HOME");
+    const android_home = zbk.getEnvPath(b.allocator, "ANDROID_HOME") orelse return error.NO_ANDROID_HOME;
     const ndk_path = try ndk.getPath(b, .{ .android_home = android_home });
-    const java_home = try zbk.getEnvPath(b.allocator, "JAVA_HOME");
+    const java_home = zbk.getEnvPath(b.allocator, "JAVA_HOME") orelse return error.NO_JAVA_HOME;
 
     // build libmain.so
     const lib = b.addLibrary(.{
