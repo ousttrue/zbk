@@ -1,8 +1,23 @@
 const std = @import("std");
+const Reader = @import("Reader.zig");
 
 pub const Attribute = struct {
     name: []const u8,
     value: []const u8,
+
+    fn parse(allocator: std.mem.Allocator, reader: *Reader) !?@This() {
+        const name = reader.parseName() catch return null;
+        _ = reader.eatWs();
+        try reader.expect('=');
+        _ = reader.eatWs();
+        const value = try reader.allocParseAttrValue(allocator);
+
+        const attr = @This(){
+            .name = try allocator.dupe(u8, name.slice),
+            .value = value,
+        };
+        return attr;
+    }
 };
 
 pub const Content = union(enum) {
@@ -17,6 +32,40 @@ pub const Declaration = struct {
     children: []Content = &.{},
     line: usize,
     column: usize,
+
+    pub fn parse(allocator: std.mem.Allocator, reader: *Reader) !?*@This() {
+        const start = reader.offset;
+
+        if (!reader.eatStr("<?")) return null;
+
+        const tag = reader.parseName() catch {
+            reader.offset = start;
+            return null;
+        };
+
+        var attributes = std.array_list.Managed(Attribute).init(allocator);
+        defer attributes.deinit();
+
+        var children = std.array_list.Managed(Content).init(allocator);
+        defer children.deinit();
+
+        while (reader.eatWs()) {
+            const attr = (try Attribute.parse(allocator, reader)) orelse break;
+            try attributes.append(attr);
+        }
+
+        try reader.expectStr("?>");
+
+        const element = try allocator.create(@This());
+        element.* = .{
+            .tag = try allocator.dupe(u8, tag.slice),
+            .attributes = try attributes.toOwnedSlice(),
+            .children = try children.toOwnedSlice(),
+            .line = tag.line,
+            .column = tag.column,
+        };
+        return element;
+    }
 
     fn deinit(this: *@This(), allocator: std.mem.Allocator) void {
         allocator.free(this.tag);
@@ -207,10 +256,77 @@ pub const Element = struct {
             return null;
         }
     };
+
+    pub fn parse(allocator: std.mem.Allocator, reader: *Reader) !?*@This() {
+        const start = reader.offset;
+
+        if (!reader.eat('<')) return null;
+
+        const tag = reader.parseName() catch {
+            reader.offset = start;
+            return null;
+        };
+
+        var attributes = std.array_list.Managed(Attribute).init(allocator);
+        defer attributes.deinit();
+
+        var children = std.array_list.Managed(Content).init(allocator);
+        defer children.deinit();
+
+        while (reader.eatWs()) {
+            const attr = (try Attribute.parse(allocator, reader)) orelse break;
+            try attributes.append(attr);
+        }
+
+        if (!reader.eatStr("/>")) {
+            try reader.expect('>');
+
+            while (true) {
+                if (reader.peek() == null) {
+                    return error.UnexpectedEof;
+                } else if (reader.eatStr("</")) {
+                    break;
+                }
+
+                const content = try parseContent(allocator, reader);
+                try children.append(content);
+            }
+
+            const closing_tag = try reader.parseName();
+            if (!std.mem.eql(u8, tag.slice, closing_tag.slice)) {
+                return error.NonMatchingClosingTag;
+            }
+
+            _ = reader.eatWs();
+            try reader.expect('>');
+        }
+
+        const element = try allocator.create(@This());
+        element.* = .{
+            .tag = try allocator.dupe(u8, tag.slice),
+            .attributes = try attributes.toOwnedSlice(),
+            .children = try children.toOwnedSlice(),
+            .line = tag.line,
+            .column = tag.column,
+        };
+        return element;
+    }
+
+    fn parseContent(allocator: std.mem.Allocator, reader: *Reader) Reader.ParseError!Content {
+        if (try reader.allocParseCharData(allocator)) |cd| {
+            return Content{ .char_data = cd };
+        } else if (try reader.parseComment()) |comment| {
+            return Content{ .comment = try allocator.dupe(u8, comment) };
+        } else if (try Element.parse(allocator, reader)) |elem| {
+            return Content{ .element = elem };
+        } else {
+            return error.UnexpectedCharacter;
+        }
+    }
 };
 
 allocator: std.mem.Allocator,
-xml_decl: ?*Declaration,
+xml_decl: ?*Declaration = null,
 root: *Element,
 
 pub fn deinit(this: *@This()) void {

@@ -1,5 +1,19 @@
 const std = @import("std");
 
+pub const ParseError = error{
+    IllegalCharacter,
+    UnexpectedEof,
+    UnexpectedCharacter,
+    UnclosedValue,
+    UnclosedComment,
+    InvalidName,
+    InvalidEntity,
+    InvalidStandaloneValue,
+    NonMatchingClosingTag,
+    InvalidDocument,
+    OutOfMemory,
+};
+
 source: []const u8,
 offset: usize = 0,
 line: usize = 0,
