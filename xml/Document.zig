@@ -47,6 +47,16 @@ pub const Declaration = struct {
         this.deinit(allocator);
         allocator.destroy(this);
     }
+
+    pub fn getAttribute(this: *@This(), attrib_name: []const u8) ?[]const u8 {
+        for (this.attributes) |child| {
+            if (std.mem.eql(u8, child.name, attrib_name)) {
+                return child.value;
+            }
+        }
+
+        return null;
+    }
 };
 
 pub const Element = struct {
@@ -104,7 +114,7 @@ pub const Element = struct {
         }
     }
 
-    pub fn getAttribute(this: Element, attrib_name: []const u8) ?[]const u8 {
+    pub fn getAttribute(this: @This(), attrib_name: []const u8) ?[]const u8 {
         for (this.attributes) |child| {
             if (std.mem.eql(u8, child.name, attrib_name)) {
                 return child.value;
@@ -114,7 +124,7 @@ pub const Element = struct {
         return null;
     }
 
-    pub fn getCharData(this: Element, child_tag: []const u8) ?[]const u8 {
+    pub fn getCharData(this: @This(), child_tag: []const u8) ?[]const u8 {
         const child = this.findChildByTag(child_tag) orelse return null;
         if (child.children.len != 1) {
             return null;
@@ -126,25 +136,25 @@ pub const Element = struct {
         };
     }
 
-    pub fn iterator(this: Element) ChildIterator {
+    pub fn iterator(this: @This()) ChildIterator {
         return .{
             .items = this.children,
             .i = 0,
         };
     }
 
-    pub fn elements(this: Element) ChildElementIterator {
+    pub fn elements(this: @This()) ChildElementIterator {
         return .{
             .inner = this.iterator(),
         };
     }
 
-    pub fn findChildByTag(this: Element, tag: []const u8) ?*Element {
+    pub fn findChildByTag(this: @This(), tag: []const u8) ?*@This() {
         var it = this.findChildrenByTag(tag);
         return it.next();
     }
 
-    pub fn findChildrenByTag(this: Element, tag: []const u8) FindChildrenByTagIterator {
+    pub fn findChildrenByTag(this: @This(), tag: []const u8) FindChildrenByTagIterator {
         return .{
             .inner = this.elements(),
             .tag = tag,
@@ -168,7 +178,7 @@ pub const Element = struct {
     pub const ChildElementIterator = struct {
         inner: ChildIterator,
 
-        pub fn next(this: *ChildElementIterator) ?*Element {
+        pub fn next(this: *ChildElementIterator) ?*@This() {
             while (this.inner.next()) |child| {
                 if (child.* != .element) {
                     continue;
@@ -185,7 +195,7 @@ pub const Element = struct {
         inner: ChildElementIterator,
         tag: []const u8,
 
-        pub fn next(this: *FindChildrenByTagIterator) ?*Element {
+        pub fn next(this: *FindChildrenByTagIterator) ?*@This() {
             while (this.inner.next()) |child| {
                 if (!std.mem.eql(u8, child.tag, this.tag)) {
                     continue;

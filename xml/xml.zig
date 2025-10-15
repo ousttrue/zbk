@@ -35,64 +35,18 @@ pub fn parse(allocator: std.mem.Allocator, src: []const u8) !Document {
     return doc;
 }
 
-test "xml: Parser" {
-    {
-        var parser = Parser.init(std.testing.allocator, "I like pythons");
-        try std.testing.expectEqual(@as(?u8, 'I'), parser.peek());
-        try std.testing.expectEqual(@as(u8, 'I'), parser.consumeNoEof());
-        try std.testing.expectEqual(@as(?u8, ' '), parser.peek());
-        try std.testing.expectEqual(@as(u8, ' '), try parser.consume());
-
-        try std.testing.expect(parser.eat('l'));
-        try std.testing.expectEqual(@as(?u8, 'i'), parser.peek());
-        try std.testing.expectEqual(false, parser.eat('a'));
-        try std.testing.expectEqual(@as(?u8, 'i'), parser.peek());
-
-        try parser.expect('i');
-        try std.testing.expectEqual(@as(?u8, 'k'), parser.peek());
-        try std.testing.expectError(error.UnexpectedCharacter, parser.expect('a'));
-        try std.testing.expectEqual(@as(?u8, 'k'), parser.peek());
-
-        try std.testing.expect(parser.eatStr("ke"));
-        try std.testing.expectEqual(@as(?u8, ' '), parser.peek());
-
-        try std.testing.expect(parser.eatWs());
-        try std.testing.expectEqual(@as(?u8, 'p'), parser.peek());
-        try std.testing.expectEqual(false, parser.eatWs());
-        try std.testing.expectEqual(@as(?u8, 'p'), parser.peek());
-
-        try std.testing.expectEqual(false, parser.eatStr("aaaaaaaaa"));
-        try std.testing.expectEqual(@as(?u8, 'p'), parser.peek());
-
-        try std.testing.expectError(error.UnexpectedEof, parser.expectStr("aaaaaaaaa"));
-        try std.testing.expectEqual(@as(?u8, 'p'), parser.peek());
-        try std.testing.expectError(error.UnexpectedCharacter, parser.expectStr("pytn"));
-        try std.testing.expectEqual(@as(?u8, 'p'), parser.peek());
-        try parser.expectStr("python");
-        try std.testing.expectEqual(@as(?u8, 's'), parser.peek());
-    }
-
-    {
-        var parser = Parser.init(std.testing.allocator, "");
-        try std.testing.expectEqual(parser.peek(), null);
-        try std.testing.expectError(error.UnexpectedEof, parser.consume());
-        try std.testing.expectEqual(parser.eat('p'), false);
-        try std.testing.expectError(error.UnexpectedEof, parser.expect('p'));
-    }
-}
-
 test "xml: parseElement" {
     const a = std.testing.allocator;
     {
         var parser = Parser.init(std.testing.allocator, "<= a='b'/>");
-        const elem = try parser.parseElement(.element);
+        const elem = try parser.parseElement();
         try std.testing.expectEqual(@as(?*Document.Element, null), elem);
-        try std.testing.expectEqual(@as(?u8, '<'), parser.peek());
+        try std.testing.expectEqual(@as(?u8, '<'), parser.reader.peek());
     }
 
     {
         var parser = Parser.init(std.testing.allocator, "<python size='15' color = \"green\"/>");
-        const elem = (try parser.parseElement(.element)).?;
+        const elem = (try parser.parseElement()).?;
         defer elem.destroy(a);
         try std.testing.expectEqualSlices(u8, elem.tag, "python");
 
@@ -107,7 +61,7 @@ test "xml: parseElement" {
 
     {
         var parser = Parser.init(std.testing.allocator, "<python>test</python>");
-        const elem = (try parser.parseElement(.element)).?;
+        const elem = (try parser.parseElement()).?;
         defer elem.destroy(a);
         try std.testing.expectEqualSlices(u8, elem.tag, "python");
         try std.testing.expectEqualSlices(u8, elem.children[0].char_data, "test");
@@ -115,7 +69,7 @@ test "xml: parseElement" {
 
     {
         var parser = Parser.init(a, "<a>b<c/>d<e/>f<!--g--></a>");
-        const elem = (try parser.parseElement(.element)).?;
+        const elem = (try parser.parseElement()).?;
         defer elem.destroy(a);
         try std.testing.expectEqualSlices(u8, elem.tag, "a");
         try std.testing.expectEqualSlices(u8, elem.children[0].char_data, "b");
@@ -132,7 +86,7 @@ test "xml: parse prolog" {
 
     {
         var parser = Parser.init(a, "<?xmla version='aa'?>");
-        const decl = (try parser.parseElement(.xml_decl)).?;
+        const decl = (try parser.parseDeclaration()).?;
         defer decl.destroy(a);
         try std.testing.expectEqualSlices(u8, decl.tag, "xmla");
         try std.testing.expectEqualSlices(u8, "aa", decl.getAttribute("version").?);
@@ -140,7 +94,7 @@ test "xml: parse prolog" {
 
     {
         var parser = Parser.init(a, "<?xml version='aa'?>");
-        const decl = (try parser.parseElement(.xml_decl)).?;
+        const decl = (try parser.parseDeclaration()).?;
         defer decl.destroy(a);
         try std.testing.expectEqualSlices(u8, "aa", decl.getAttribute("version").?);
         try std.testing.expectEqual(@as(?[]const u8, null), decl.getAttribute("encoding"));
@@ -149,7 +103,7 @@ test "xml: parse prolog" {
 
     {
         var parser = Parser.init(a, "<?xml version=\"ccc\" encoding = 'bbb' standalone   \t =   'yes'?>");
-        const decl = (try parser.parseElement(.xml_decl)).?;
+        const decl = (try parser.parseDeclaration()).?;
         defer decl.destroy(a);
         try std.testing.expectEqualSlices(u8, "ccc", decl.getAttribute("version").?);
         try std.testing.expectEqualSlices(u8, "bbb", decl.getAttribute("encoding").?);

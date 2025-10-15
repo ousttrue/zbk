@@ -16,11 +16,13 @@ pub const ParseError = error{
     OutOfMemory,
 };
 
+allocator: std.mem.Allocator,
 reader: Reader,
 
 pub fn init(allocator: std.mem.Allocator, source: []const u8) @This() {
     return @This(){
-        .reader = .init(allocator, source),
+        .allocator = allocator,
+        .reader = .{ .source = source },
     };
 }
 
@@ -29,15 +31,15 @@ pub fn parseElement(this: *@This()) !?*Document.Element {
 
     if (!this.reader.eat('<')) return null;
 
-    const tag = this.reader.parseNameNoDupe() catch {
+    const tag = this.reader.parseName() catch {
         this.reader.offset = start;
         return null;
     };
 
-    var attributes = std.array_list.Managed(Document.Attribute).init(this.reader.allocator);
+    var attributes = std.array_list.Managed(Document.Attribute).init(this.allocator);
     defer attributes.deinit();
 
-    var children = std.array_list.Managed(Document.Content).init(this.reader.allocator);
+    var children = std.array_list.Managed(Document.Content).init(this.allocator);
     defer children.deinit();
 
     while (this.reader.eatWs()) {
@@ -59,7 +61,7 @@ pub fn parseElement(this: *@This()) !?*Document.Element {
             try children.append(content);
         }
 
-        const closing_tag = try this.reader.parseNameNoDupe();
+        const closing_tag = try this.reader.parseName();
         if (!std.mem.eql(u8, tag.slice, closing_tag.slice)) {
             return error.NonMatchingClosingTag;
         }
@@ -68,9 +70,9 @@ pub fn parseElement(this: *@This()) !?*Document.Element {
         try this.reader.expect('>');
     }
 
-    const element = try this.reader.allocator.create(Document.Element);
+    const element = try this.allocator.create(Document.Element);
     element.* = .{
-        .tag = try this.reader.allocator.dupe(u8, tag.slice),
+        .tag = try this.allocator.dupe(u8, tag.slice),
         .attributes = try attributes.toOwnedSlice(),
         .children = try children.toOwnedSlice(),
         .line = tag.line,
@@ -84,15 +86,15 @@ pub fn parseDeclaration(this: *@This()) !?*Document.Declaration {
 
     if (!this.reader.eatStr("<?")) return null;
 
-    const tag = this.reader.parseNameNoDupe() catch {
+    const tag = this.reader.parseName() catch {
         this.reader.offset = start;
         return null;
     };
 
-    var attributes = std.array_list.Managed(Document.Attribute).init(this.reader.allocator);
+    var attributes = std.array_list.Managed(Document.Attribute).init(this.allocator);
     defer attributes.deinit();
 
-    var children = std.array_list.Managed(Document.Content).init(this.reader.allocator);
+    var children = std.array_list.Managed(Document.Content).init(this.allocator);
     defer children.deinit();
 
     while (this.reader.eatWs()) {
@@ -102,9 +104,9 @@ pub fn parseDeclaration(this: *@This()) !?*Document.Declaration {
 
     try this.reader.expectStr("?>");
 
-    const element = try this.reader.allocator.create(Document.Declaration);
+    const element = try this.allocator.create(Document.Declaration);
     element.* = .{
-        .tag = try this.reader.allocator.dupe(u8, tag.slice),
+        .tag = try this.allocator.dupe(u8, tag.slice),
         .attributes = try attributes.toOwnedSlice(),
         .children = try children.toOwnedSlice(),
         .line = tag.line,
@@ -114,10 +116,10 @@ pub fn parseDeclaration(this: *@This()) !?*Document.Declaration {
 }
 
 fn parseContent(this: *@This()) ParseError!Document.Content {
-    if (try this.reader.parseCharData()) |cd| {
+    if (try this.reader.allocParseCharData(this.allocator)) |cd| {
         return Document.Content{ .char_data = cd };
     } else if (try this.reader.parseComment()) |comment| {
-        return Document.Content{ .comment = comment };
+        return Document.Content{ .comment = try this.allocator.dupe(u8, comment) };
     } else if (try this.parseElement()) |elem| {
         return Document.Content{ .element = elem };
     } else {
@@ -126,17 +128,15 @@ fn parseContent(this: *@This()) ParseError!Document.Content {
 }
 
 fn parseAttr(this: *@This()) !?Document.Attribute {
-    const name = this.reader.parseNameNoDupe() catch return null;
+    const name = this.reader.parseName() catch return null;
     _ = this.reader.eatWs();
     try this.reader.expect('=');
     _ = this.reader.eatWs();
-    const value = try this.reader.parseAttrValue();
+    const value = try this.reader.allocParseAttrValue(this.allocator);
 
     const attr = Document.Attribute{
-        .name = try this.reader.allocator.dupe(u8, name.slice),
+        .name = try this.allocator.dupe(u8, name.slice),
         .value = value,
     };
     return attr;
 }
-
-

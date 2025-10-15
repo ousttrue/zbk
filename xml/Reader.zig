@@ -1,17 +1,9 @@
 const std = @import("std");
 
-allocator: std.mem.Allocator,
 source: []const u8,
 offset: usize = 0,
 line: usize = 0,
 column: usize = 0,
-
-pub fn init(allocator: std.mem.Allocator, source: []const u8) @This() {
-    return @This(){
-        .allocator = allocator,
-        .source = source,
-    };
-}
 
 pub fn consumeNoEof(this: *@This()) u8 {
     std.debug.assert(this.offset < this.source.len);
@@ -69,7 +61,7 @@ pub fn consume(this: *@This()) !u8 {
     return error.UnexpectedEof;
 }
 
-pub fn parseAttrValue(this: *@This()) ![]const u8 {
+pub fn allocParseAttrValue(this: *@This(), allocator: std.mem.Allocator) ![]const u8 {
     const quote = try this.consume();
     if (quote != '"' and quote != '\'') return error.UnexpectedCharacter;
 
@@ -82,7 +74,7 @@ pub fn parseAttrValue(this: *@This()) ![]const u8 {
 
     const end = this.offset - 1;
 
-    return try unescape(this.allocator, this.source[begin..end]);
+    return try allocUnescape(allocator, this.source[begin..end]);
 }
 
 pub fn parseEqAttrValue(this: *@This()) ![]const u8 {
@@ -121,7 +113,7 @@ pub fn parseComment(this: *@This()) !?[]const u8 {
     }
 
     const end = this.offset - "-->".len;
-    return try this.allocator.dupe(u8, this.source[begin..end]);
+    return this.source[begin..end];
 }
 
 pub fn peek(this: *@This()) ?u8 {
@@ -146,9 +138,8 @@ pub fn eatWs(this: *@This()) bool {
 }
 
 pub fn skipComments(this: *@This()) !void {
-    while ((try this.parseComment())) |comment| {
+    while ((try this.parseComment())) |_| {
         _ = this.eatWs();
-        this.allocator.free(comment);
     }
 }
 
@@ -158,7 +149,7 @@ const Token = struct {
     slice: []const u8,
 };
 
-pub fn parseNameNoDupe(parser: *@This()) !Token {
+pub fn parseName(parser: *@This()) !Token {
     // XML's spec on names is very long, so to make this easier
     // we just take any character that is not special and not whitespace
     const line = parser.line;
@@ -183,7 +174,7 @@ pub fn parseNameNoDupe(parser: *@This()) !Token {
     };
 }
 
-pub fn parseCharData(this: *@This()) !?[]const u8 {
+pub fn allocParseCharData(this: *@This(), allocator: std.mem.Allocator) !?[]const u8 {
     const begin = this.offset;
 
     while (this.peek()) |ch| {
@@ -196,26 +187,26 @@ pub fn parseCharData(this: *@This()) !?[]const u8 {
     const end = this.offset;
     if (begin == end) return null;
 
-    return try unescape(this.allocator, this.source[begin..end]);
+    return try allocUnescape(allocator, this.source[begin..end]);
 }
 
-pub fn unescape(allocator: std.mem.Allocator, text: []const u8) ![]const u8 {
-    const unescaped = try allocator.alloc(u8, text.len);
+pub fn allocUnescape(allocator: std.mem.Allocator, text: []const u8) ![]const u8 {
+    var buf = std.array_list.Managed(u8).init(allocator);
+    defer buf.deinit();
 
-    var j: usize = 0;
     var i: usize = 0;
-    while (i < text.len) : (j += 1) {
+    while (i < text.len) {
         if (text[i] == '&') {
             const entity_end = 1 + (std.mem.indexOfScalarPos(u8, text, i, ';') orelse return error.InvalidEntity);
-            unescaped[j] = try unescapeEntity(text[i..entity_end]);
+            try buf.append(try unescapeEntity(text[i..entity_end]));
             i = entity_end;
         } else {
-            unescaped[j] = text[i];
+            try buf.append(text[i]);
             i += 1;
         }
     }
 
-    return unescaped[0..j];
+    return buf.toOwnedSlice();
 }
 
 test "unescape" {
@@ -223,12 +214,16 @@ test "unescape" {
     defer arena.deinit();
     const a = arena.allocator();
 
-    try std.testing.expectEqualSlices(u8, "test", try unescape(a, "test"));
-    try std.testing.expectEqualSlices(u8, "a<b&c>d\"e'f<", try unescape(a, "a&lt;b&amp;c&gt;d&quot;e&apos;f&lt;"));
-    try std.testing.expectError(error.InvalidEntity, unescape(a, "python&"));
-    try std.testing.expectError(error.InvalidEntity, unescape(a, "python&&"));
-    try std.testing.expectError(error.InvalidEntity, unescape(a, "python&test;"));
-    try std.testing.expectError(error.InvalidEntity, unescape(a, "python&boa"));
+    try std.testing.expectEqualSlices(u8, "test", try allocUnescape(a, "test"));
+    try std.testing.expectEqualSlices(
+        u8,
+        "a<b&c>d\"e'f<",
+        try allocUnescape(a, "a&lt;b&amp;c&gt;d&quot;e&apos;f&lt;"),
+    );
+    try std.testing.expectError(error.InvalidEntity, allocUnescape(a, "python&"));
+    try std.testing.expectError(error.InvalidEntity, allocUnescape(a, "python&&"));
+    try std.testing.expectError(error.InvalidEntity, allocUnescape(a, "python&test;"));
+    try std.testing.expectError(error.InvalidEntity, allocUnescape(a, "python&boa"));
 }
 
 pub fn unescapeEntity(text: []const u8) !u8 {
@@ -247,4 +242,50 @@ pub fn unescapeEntity(text: []const u8) !u8 {
     }
 
     return error.InvalidEntity;
+}
+
+test "xml: Reader" {
+    {
+        var parser = @This(){ .source = "I like pythons" };
+        try std.testing.expectEqual(@as(?u8, 'I'), parser.peek());
+        try std.testing.expectEqual(@as(u8, 'I'), parser.consumeNoEof());
+        try std.testing.expectEqual(@as(?u8, ' '), parser.peek());
+        try std.testing.expectEqual(@as(u8, ' '), try parser.consume());
+
+        try std.testing.expect(parser.eat('l'));
+        try std.testing.expectEqual(@as(?u8, 'i'), parser.peek());
+        try std.testing.expectEqual(false, parser.eat('a'));
+        try std.testing.expectEqual(@as(?u8, 'i'), parser.peek());
+
+        try parser.expect('i');
+        try std.testing.expectEqual(@as(?u8, 'k'), parser.peek());
+        try std.testing.expectError(error.UnexpectedCharacter, parser.expect('a'));
+        try std.testing.expectEqual(@as(?u8, 'k'), parser.peek());
+
+        try std.testing.expect(parser.eatStr("ke"));
+        try std.testing.expectEqual(@as(?u8, ' '), parser.peek());
+
+        try std.testing.expect(parser.eatWs());
+        try std.testing.expectEqual(@as(?u8, 'p'), parser.peek());
+        try std.testing.expectEqual(false, parser.eatWs());
+        try std.testing.expectEqual(@as(?u8, 'p'), parser.peek());
+
+        try std.testing.expectEqual(false, parser.eatStr("aaaaaaaaa"));
+        try std.testing.expectEqual(@as(?u8, 'p'), parser.peek());
+
+        try std.testing.expectError(error.UnexpectedEof, parser.expectStr("aaaaaaaaa"));
+        try std.testing.expectEqual(@as(?u8, 'p'), parser.peek());
+        try std.testing.expectError(error.UnexpectedCharacter, parser.expectStr("pytn"));
+        try std.testing.expectEqual(@as(?u8, 'p'), parser.peek());
+        try parser.expectStr("python");
+        try std.testing.expectEqual(@as(?u8, 's'), parser.peek());
+    }
+
+    {
+        var parser = @This(){ .source = "" };
+        try std.testing.expectEqual(parser.peek(), null);
+        try std.testing.expectError(error.UnexpectedEof, parser.consume());
+        try std.testing.expectEqual(parser.eat('p'), false);
+        try std.testing.expectError(error.UnexpectedEof, parser.expect('p'));
+    }
 }
