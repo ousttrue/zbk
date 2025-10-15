@@ -11,11 +11,48 @@ pub const Content = union(enum) {
     element: *Element,
 };
 
+pub const Declaration = struct {
+    tag: []const u8,
+    attributes: []Attribute = &.{},
+    children: []Content = &.{},
+    line: usize,
+    column: usize,
+
+    fn deinit(this: *@This(), allocator: std.mem.Allocator) void {
+        allocator.free(this.tag);
+        for (this.children) |child| {
+            switch (child) {
+                .char_data => |char_data| {
+                    allocator.free(char_data);
+                },
+                .comment => |comment| {
+                    allocator.free(comment);
+                },
+                .element => |element| {
+                    element.deinit(allocator);
+                    allocator.destroy(element);
+                },
+            }
+        }
+        allocator.free(this.children);
+
+        for (this.attributes) |attribute| {
+            allocator.free(attribute.name);
+            allocator.free(attribute.value);
+        }
+        allocator.free(this.attributes);
+    }
+
+    pub fn destroy(this: *@This(), allocator: std.mem.Allocator) void {
+        this.deinit(allocator);
+        allocator.destroy(this);
+    }
+};
+
 pub const Element = struct {
     tag: []const u8,
     attributes: []Attribute = &.{},
     children: []Content = &.{},
-
     line: usize,
     column: usize,
 
@@ -163,7 +200,7 @@ pub const Element = struct {
 };
 
 allocator: std.mem.Allocator,
-xml_decl: ?*Element,
+xml_decl: ?*Declaration,
 root: *Element,
 
 pub fn deinit(this: *@This()) void {

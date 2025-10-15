@@ -1,6 +1,5 @@
 const std = @import("std");
 const Document = @import("Document.zig");
-const Element = Document.Element;
 
 pub const ParseError = error{
     IllegalCharacter,
@@ -51,22 +50,10 @@ fn parseComment(this: *@This()) !?[]const u8 {
     return try this.allocator.dupe(u8, this.source[begin..end]);
 }
 
-const ElementKind = enum {
-    xml_decl,
-    element,
-};
-
-pub fn parseElement(this: *@This(), comptime kind: ElementKind) !?*Element {
+pub fn parseElement(this: *@This()) !?*Document.Element {
     const start = this.offset;
 
-    switch (kind) {
-        .xml_decl => {
-            if (!this.eatStr("<?")) return null;
-        },
-        .element => {
-            if (!this.eat('<')) return null;
-        },
-    }
+    if (!this.eat('<')) return null;
 
     const tag = parseNameNoDupe(this) catch {
         this.offset = start;
@@ -84,35 +71,64 @@ pub fn parseElement(this: *@This(), comptime kind: ElementKind) !?*Element {
         try attributes.append(attr);
     }
 
-    switch (kind) {
-        .xml_decl => try this.expectStr("?>"),
-        .element => {
-            if (!this.eatStr("/>")) {
-                try this.expect('>');
+    if (!this.eatStr("/>")) {
+        try this.expect('>');
 
-                while (true) {
-                    if (this.peek() == null) {
-                        return error.UnexpectedEof;
-                    } else if (this.eatStr("</")) {
-                        break;
-                    }
-
-                    const content = try this.parseContent();
-                    try children.append(content);
-                }
-
-                const closing_tag = try parseNameNoDupe(this);
-                if (!std.mem.eql(u8, tag.slice, closing_tag.slice)) {
-                    return error.NonMatchingClosingTag;
-                }
-
-                _ = this.eatWs();
-                try this.expect('>');
+        while (true) {
+            if (this.peek() == null) {
+                return error.UnexpectedEof;
+            } else if (this.eatStr("</")) {
+                break;
             }
-        },
+
+            const content = try this.parseContent();
+            try children.append(content);
+        }
+
+        const closing_tag = try parseNameNoDupe(this);
+        if (!std.mem.eql(u8, tag.slice, closing_tag.slice)) {
+            return error.NonMatchingClosingTag;
+        }
+
+        _ = this.eatWs();
+        try this.expect('>');
     }
 
-    const element = try this.allocator.create(Element);
+    const element = try this.allocator.create(Document.Element);
+    element.* = .{
+        .tag = try this.allocator.dupe(u8, tag.slice),
+        .attributes = try attributes.toOwnedSlice(),
+        .children = try children.toOwnedSlice(),
+        .line = tag.line,
+        .column = tag.column,
+    };
+    return element;
+}
+
+pub fn parseDeclaration(this: *@This()) !?*Document.Declaration {
+    const start = this.offset;
+
+    if (!this.eatStr("<?")) return null;
+
+    const tag = parseNameNoDupe(this) catch {
+        this.offset = start;
+        return null;
+    };
+
+    var attributes = std.array_list.Managed(Document.Attribute).init(this.allocator);
+    defer attributes.deinit();
+
+    var children = std.array_list.Managed(Document.Content).init(this.allocator);
+    defer children.deinit();
+
+    while (this.eatWs()) {
+        const attr = (try this.parseAttr()) orelse break;
+        try attributes.append(attr);
+    }
+
+    try this.expectStr("?>");
+
+    const element = try this.allocator.create(Document.Declaration);
     element.* = .{
         .tag = try this.allocator.dupe(u8, tag.slice),
         .attributes = try attributes.toOwnedSlice(),
@@ -158,7 +174,7 @@ fn parseContent(this: *@This()) ParseError!Document.Content {
         return Document.Content{ .char_data = cd };
     } else if (try this.parseComment()) |comment| {
         return Document.Content{ .comment = comment };
-    } else if (try this.parseElement(.element)) |elem| {
+    } else if (try this.parseElement()) |elem| {
         return Document.Content{ .element = elem };
     } else {
         return error.UnexpectedCharacter;

@@ -13,20 +13,20 @@ pub fn parse(allocator: std.mem.Allocator, src: []const u8) !Document {
 
     try parser.skipComments();
 
-    doc.xml_decl = try parser.parseElement(.xml_decl);
+    doc.xml_decl = try parser.parseDeclaration();
     _ = parser.eatWs();
     _ = parser.eatStr("<!DOCTYPE xml>");
     _ = parser.eatWs();
 
     // xr.xml currently has 2 processing instruction tags, they're handled manually for now
-    _ = try parser.parseElement(.xml_decl);
+    _ = try parser.parseDeclaration();
     _ = parser.eatWs();
-    _ = try parser.parseElement(.xml_decl);
+    _ = try parser.parseDeclaration();
     _ = parser.eatWs();
 
     try parser.skipComments();
 
-    doc.root = (try parser.parseElement(.element)) orelse return error.InvalidDocument;
+    doc.root = (try parser.parseElement()) orelse return error.InvalidDocument;
     _ = parser.eatWs();
     try parser.skipComments();
 
