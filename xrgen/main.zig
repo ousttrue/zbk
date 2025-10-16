@@ -22,6 +22,6 @@ pub fn main() !void {
     };
     defer allocator.free(xml_src);
 
-    var doc = try xml.parse(allocator, xml_src);
-    defer doc.deinit();
+    var root = try xml.parse(allocator, xml_src);
+    defer root.destroy(allocator);
 }

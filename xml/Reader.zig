@@ -3,6 +3,7 @@ const std = @import("std");
 pub const ParseError = error{
     IllegalCharacter,
     UnexpectedEof,
+    NotEnd,
     UnexpectedCharacter,
     UnclosedValue,
     UnclosedComment,
@@ -10,6 +11,7 @@ pub const ParseError = error{
     InvalidEntity,
     InvalidStandaloneValue,
     NonMatchingClosingTag,
+    NonMatchingOpeningTag,
     InvalidDocument,
     OutOfMemory,
 };
@@ -75,30 +77,6 @@ pub fn consume(this: *@This()) !u8 {
     return error.UnexpectedEof;
 }
 
-pub fn allocParseAttrValue(this: *@This(), allocator: std.mem.Allocator) ![]const u8 {
-    const quote = try this.consume();
-    if (quote != '"' and quote != '\'') return error.UnexpectedCharacter;
-
-    const begin = this.offset;
-
-    while (true) {
-        const c = this.consume() catch return error.UnclosedValue;
-        if (c == quote) break;
-    }
-
-    const end = this.offset - 1;
-
-    return try allocUnescape(allocator, this.source[begin..end]);
-}
-
-pub fn parseEqAttrValue(this: *@This()) ![]const u8 {
-    _ = this.eatWs();
-    try this.expect('=');
-    _ = this.eatWs();
-
-    return try this.parseAttrValue();
-}
-
 pub fn eat(this: *@This(), char: u8) bool {
     this.expect(char) catch return false;
     return true;
@@ -115,18 +93,6 @@ pub fn currentLine(this: @This()) []const u8 {
     }
 
     const end = std.mem.indexOfScalarPos(u8, this.source, this.offset, '\n') orelse this.source.len;
-    return this.source[begin..end];
-}
-
-pub fn parseComment(this: *@This()) !?[]const u8 {
-    if (!this.eatStr("<!--")) return null;
-
-    const begin = this.offset;
-    while (!this.eatStr("-->")) {
-        _ = this.consume() catch return error.UnclosedComment;
-    }
-
-    const end = this.offset - "-->".len;
     return this.source[begin..end];
 }
 
@@ -149,59 +115,6 @@ pub fn eatWs(this: *@This()) bool {
     }
 
     return ws;
-}
-
-pub fn skipComments(this: *@This()) !void {
-    while ((try this.parseComment())) |_| {
-        _ = this.eatWs();
-    }
-}
-
-const Token = struct {
-    line: usize,
-    column: usize,
-    slice: []const u8,
-};
-
-pub fn parseName(parser: *@This()) !Token {
-    // XML's spec on names is very long, so to make this easier
-    // we just take any character that is not special and not whitespace
-    const line = parser.line;
-    const column = parser.column;
-    const begin = parser.offset;
-
-    while (parser.peek()) |ch| {
-        switch (ch) {
-            ' ', '\t', '\n', '\r' => break,
-            '&', '"', '\'', '<', '>', '?', '=', '/' => break,
-            else => _ = parser.consumeNoEof(),
-        }
-    }
-
-    const end = parser.offset;
-    if (begin == end) return error.InvalidName;
-
-    return .{
-        .line = line,
-        .column = column,
-        .slice = parser.source[begin..end],
-    };
-}
-
-pub fn allocParseCharData(this: *@This(), allocator: std.mem.Allocator) !?[]const u8 {
-    const begin = this.offset;
-
-    while (this.peek()) |ch| {
-        switch (ch) {
-            '<' => break,
-            else => _ = this.consumeNoEof(),
-        }
-    }
-
-    const end = this.offset;
-    if (begin == end) return null;
-
-    return try allocUnescape(allocator, this.source[begin..end]);
 }
 
 pub fn allocUnescape(allocator: std.mem.Allocator, text: []const u8) ![]const u8 {
@@ -302,4 +215,85 @@ test "xml: Reader" {
         try std.testing.expectEqual(parser.eat('p'), false);
         try std.testing.expectError(error.UnexpectedEof, parser.expect('p'));
     }
+}
+
+pub fn parseComment(this: *@This()) !?[]const u8 {
+    if (!this.eatStr("<!--")) return null;
+
+    const begin = this.offset;
+    while (!this.eatStr("-->")) {
+        _ = this.consume() catch return error.UnclosedComment;
+    }
+
+    const end = this.offset - "-->".len;
+    return this.source[begin..end];
+}
+
+pub fn skipComments(this: *@This()) !void {
+    while ((try parseComment(this))) |_| {
+        _ = this.eatWs();
+    }
+}
+
+pub fn allocParseCharData(this: *@This(), allocator: std.mem.Allocator) !?[]const u8 {
+    const begin = this.offset;
+
+    while (this.peek()) |ch| {
+        switch (ch) {
+            '<' => break,
+            else => _ = this.consumeNoEof(),
+        }
+    }
+
+    const end = this.offset;
+    if (begin == end) return null;
+
+    return try allocUnescape(allocator, this.source[begin..end]);
+}
+
+pub fn allocParseAttrValue(this: *@This(), allocator: std.mem.Allocator) ![]const u8 {
+    const quote = try this.consume();
+    if (quote != '"' and quote != '\'') return error.UnexpectedCharacter;
+
+    const begin = this.offset;
+
+    while (true) {
+        const c = this.consume() catch return error.UnclosedValue;
+        if (c == quote) break;
+    }
+
+    const end = this.offset - 1;
+
+    return try allocUnescape(allocator, this.source[begin..end]);
+}
+
+const Token = struct {
+    line: usize,
+    column: usize,
+    slice: []const u8,
+};
+
+pub fn parseName(parser: *@This()) !Token {
+    // XML's spec on names is very long, so to make this easier
+    // we just take any character that is not special and not whitespace
+    const line = parser.line;
+    const column = parser.column;
+    const begin = parser.offset;
+
+    while (parser.peek()) |ch| {
+        switch (ch) {
+            ' ', '\t', '\n', '\r' => break,
+            '&', '"', '\'', '<', '>', '?', '=', '/' => break,
+            else => _ = parser.consumeNoEof(),
+        }
+    }
+
+    const end = parser.offset;
+    if (begin == end) return error.InvalidName;
+
+    return .{
+        .line = line,
+        .column = column,
+        .slice = parser.source[begin..end],
+    };
 }

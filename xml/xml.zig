@@ -1,54 +1,64 @@
 const std = @import("std");
-const Parser = @import("Parser.zig");
-pub const Document = @import("Document.zig");
+const Reader = @import("Reader.zig");
+const Declaration = @import("Declaration.zig");
+const Element = @import("Element.zig");
 
-pub fn parse(allocator: std.mem.Allocator, src: []const u8) !Document {
-    var parser = Parser.init(allocator, src);
+pub fn parseWithDecl(
+    allocator: std.mem.Allocator,
+    source: []const u8,
+) Reader.ParseError!struct { *Element, ?*Declaration } {
+    var reader = Reader{
+        .source = source,
+    };
 
-    try parser.reader.skipComments();
+    try reader.skipComments();
 
-    const xml_decl = try Document.Declaration.parse(allocator, &parser.reader);
-    _ = parser.reader.eatWs();
-    _ = parser.reader.eatStr("<!DOCTYPE xml>");
-    _ = parser.reader.eatWs();
+    const xml_decl = try Declaration.parse(allocator, &reader);
+    _ = reader.eatWs();
+    _ = reader.eatStr("<!DOCTYPE xml>");
+    _ = reader.eatWs();
 
     // xr.xml currently has 2 processing instruction tags, they're handled manually for now
-    if (try Document.Declaration.parse(allocator, &parser.reader)) |decl| {
+    if (try Declaration.parse(allocator, &reader)) |decl| {
         decl.destroy(allocator);
     }
-    _ = parser.reader.eatWs();
-    if (try Document.Declaration.parse(allocator, &parser.reader)) |decl| {
+    _ = reader.eatWs();
+    if (try Declaration.parse(allocator, &reader)) |decl| {
         decl.destroy(allocator);
     }
-    _ = parser.reader.eatWs();
+    _ = reader.eatWs();
 
-    try parser.reader.skipComments();
+    try reader.skipComments();
 
-    const root = (try Document.Element.parse(allocator, &parser.reader)) orelse return error.InvalidDocument;
-    _ = parser.reader.eatWs();
-    try parser.reader.skipComments();
+    const root = try Element.parse(allocator, &reader);
+    _ = reader.eatWs();
+    try reader.skipComments();
 
-    if (parser.reader.peek() != null) return error.InvalidDocument;
+    if (reader.peek() != null) return error.NotEnd;
 
-    return Document{
-        .allocator = allocator,
-        .xml_decl = xml_decl,
-        .root = root,
+    return .{
+        root,
+        xml_decl,
     };
+}
+
+pub fn parse(allocator: std.mem.Allocator, source: []const u8) !*Element {
+    const root, const maybe_decl = try parseWithDecl(allocator, source);
+    if (maybe_decl) |decl| {
+        decl.destroy(allocator);
+    }
+    return root;
 }
 
 test "xml: Element.parse" {
     const a = std.testing.allocator;
     {
-        var parser = Parser.init(a, "<= a='b'/>");
-        const elem = try Document.Element.parse(parser.allocator, &parser.reader);
-        try std.testing.expectEqual(@as(?*Document.Element, null), elem);
-        try std.testing.expectEqual(@as(?u8, '<'), parser.reader.peek());
+        var reader = Reader{ .source = "<= a='b'/>" };
+        try std.testing.expectError(error.NonMatchingOpeningTag, Element.parse(a, &reader));
     }
 
     {
-        var parser = Parser.init(a, "<python size='15' color = \"green\"/>");
-        const elem = (try Document.Element.parse(parser.allocator, &parser.reader)).?;
+        const elem = try parse(a, "<python size='15' color = \"green\"/>");
         defer elem.destroy(a);
         try std.testing.expectEqualSlices(u8, elem.tag, "python");
 
@@ -62,16 +72,14 @@ test "xml: Element.parse" {
     }
 
     {
-        var parser = Parser.init(a, "<python>test</python>");
-        const elem = (try Document.Element.parse(parser.allocator, &parser.reader)).?;
+        const elem = try parse(a, "<python>test</python>");
         defer elem.destroy(a);
         try std.testing.expectEqualSlices(u8, elem.tag, "python");
         try std.testing.expectEqualSlices(u8, elem.children[0].char_data, "test");
     }
 
     {
-        var parser = Parser.init(a, "<a>b<c/>d<e/>f<!--g--></a>");
-        const elem = (try Document.Element.parse(parser.allocator, &parser.reader)).?;
+        const elem = try parse(a, "<a>b<c/>d<e/>f<!--g--></a>");
         defer elem.destroy(a);
         try std.testing.expectEqualSlices(u8, elem.tag, "a");
         try std.testing.expectEqualSlices(u8, elem.children[0].char_data, "b");
@@ -83,41 +91,16 @@ test "xml: Element.parse" {
     }
 }
 
-test "xml: parse prolog" {
-    const a = std.testing.allocator;
-
-    {
-        var parser = Parser.init(a, "<?xmla version='aa'?>");
-        const decl = (try Document.Declaration.parse(parser.allocator, &parser.reader)).?;
-        defer decl.destroy(a);
-        try std.testing.expectEqualSlices(u8, decl.tag, "xmla");
-        try std.testing.expectEqualSlices(u8, "aa", decl.getAttribute("version").?);
-    }
-
-    {
-        var parser = Parser.init(a, "<?xml version='aa'?>");
-        const decl = (try Document.Declaration.parse(parser.allocator, &parser.reader)).?;
-        defer decl.destroy(a);
-        try std.testing.expectEqualSlices(u8, "aa", decl.getAttribute("version").?);
-        try std.testing.expectEqual(@as(?[]const u8, null), decl.getAttribute("encoding"));
-        try std.testing.expectEqual(@as(?[]const u8, null), decl.getAttribute("standalone"));
-    }
-
-    {
-        var parser = Parser.init(a, "<?xml version=\"ccc\" encoding = 'bbb' standalone   \t =   'yes'?>");
-        const decl = (try Document.Declaration.parse(parser.allocator, &parser.reader)).?;
-        defer decl.destroy(a);
-        try std.testing.expectEqualSlices(u8, "ccc", decl.getAttribute("version").?);
-        try std.testing.expectEqualSlices(u8, "bbb", decl.getAttribute("encoding").?);
-        try std.testing.expectEqualSlices(u8, "yes", decl.getAttribute("standalone").?);
-    }
-}
-
 test "xml: top level comments" {
-    var doc = try parse(
-        std.testing.allocator,
+    const a = std.testing.allocator;
+    var root = try parse(
+        a,
         "<?xml version='aa'?><!--comment--><python color='green'/><!--another comment-->",
     );
-    defer doc.deinit();
-    try std.testing.expectEqualSlices(u8, "python", doc.root.tag);
+    defer root.destroy(a);
+    try std.testing.expectEqualSlices(u8, "python", root.tag);
+
+    std.testing.refAllDecls(Reader);
+    std.testing.refAllDecls(Declaration);
+    std.testing.refAllDecls(Element);
 }
