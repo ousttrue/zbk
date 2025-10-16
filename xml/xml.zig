@@ -89,6 +89,12 @@ test "xml: Element.parse" {
         try std.testing.expectEqualSlices(u8, elem.children[4].char_data, "f");
         try std.testing.expectEqualSlices(u8, elem.children[5].comment, "g");
     }
+
+    {
+        const elem = try parse(a, "<word>hello&amp;world</word>");
+        defer elem.destroy(a);
+        try std.testing.expectEqualSlices(u8, elem.children[0].char_data, "hello&world");
+    }
 }
 
 test "xml: top level comments" {
