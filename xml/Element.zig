@@ -35,6 +35,30 @@ pub const Content = union(enum) {
             },
         }
     }
+
+    pub fn dumpString(this: *const @This(), w: *std.Io.Writer) std.Io.Writer.Error!void {
+        switch (this.*) {
+            .char_data => |char_data| {
+                try w.print(" {s}", .{std.mem.trim(
+                    u8,
+                    char_data,
+                    &std.ascii.whitespace,
+                )});
+            },
+            .comment => {},
+            .element => |element| {
+                if (std.mem.eql(u8, "name", element.tag)) {
+                    if (element.children.len == 1) {
+                        try element.children[0].dumpString(w);
+                    } else {
+                        return error.WriteFailed;
+                    }
+                } else {
+                    // return error.WriteFailed;
+                }
+            },
+        }
+    }
 };
 
 tag: []const u8,
@@ -118,20 +142,48 @@ pub fn destroy(this: *@This(), allocator: std.mem.Allocator) void {
 }
 
 pub fn format(this: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
-    try writer.print("<{s} {}:{}", .{ this.tag, this.line, this.column });
+    try writer.print(" {}:{}<{s}", .{ this.line, this.column, this.tag });
     for (this.attributes) |a| {
         try writer.print(" {s}={s}", .{ a.name, a.value });
     }
     try writer.print(">", .{});
     for (this.children) |c| {
-        switch (c) {
-            .char_data => |char_data| try writer.print("{s}", .{char_data}),
-            .comment => |comment| try writer.print("{s}", .{comment}),
+        try c.dumpString(writer);
+    }
+    // try writer.writeByte('\n');
+}
+
+fn writeIndent(w: *std.Io.Writer, indent: u32) !void {
+    for (0..indent) |_| {
+        try w.writeByte(' ');
+    }
+}
+
+pub fn debugPrint(this: @This(), w: *std.Io.Writer, indent: u32) !void {
+    try writeIndent(w, indent);
+    try w.writeByte('<');
+    _ = try w.write(this.tag);
+    for (this.attributes) |a| {
+        try w.print(" {s}={s}", .{ a.name, a.value });
+    }
+    try w.writeByte('>');
+    try w.writeByte('\n');
+
+    for (this.children) |*child| {
+        switch (child.*) {
+            .char_data => |char_data| {
+                try writeIndent(w, indent + 2);
+                try w.print("{s}\n", .{char_data});
+            },
+            .comment => |comment| {
+                try writeIndent(w, indent + 2);
+                try w.print(";; {s}\n", .{comment});
+            },
             .element => |element| {
-                _ = element;
-                // try writer.print("{f}", .{element});
+                try element.debugPrint(w, indent + 2);
             },
         }
+        // child.debugPrint(w, indent + 2);
     }
 }
 
@@ -145,15 +197,22 @@ pub fn getAttribute(this: @This(), attrib_name: []const u8) ?[]const u8 {
     return null;
 }
 
-pub fn getCharData(this: @This(), child_tag: []const u8) ?[]const u8 {
-    const child = this.findChildByTag(child_tag) orelse return null;
-    if (child.children.len != 1) {
-        return null;
-    }
+// pub fn getCharData(this: @This(), child_tag: []const u8) ?[]const u8 {
+//     const child = this.findChildByTag(child_tag) orelse return null;
+//     if (child.children.len != 1) {
+//         return null;
+//     }
+//
+//     return switch (child.children[0]) {
+//         .char_data => |char_data| char_data,
+//         else => null,
+//     };
+// }
 
-    return switch (child.children[0]) {
+pub fn getCharData(this: @This()) []const u8 {
+    return switch (this.children[0]) {
         .char_data => |char_data| char_data,
-        else => null,
+        else => @panic("no_char_data"),
     };
 }
 

@@ -1,7 +1,7 @@
 const std = @import("std");
 const Reader = @import("Reader.zig");
-const Declaration = @import("Declaration.zig");
-const Element = @import("Element.zig");
+pub const Declaration = @import("Declaration.zig");
+pub const Element = @import("Element.zig");
 
 pub fn parseWithDecl(
     allocator: std.mem.Allocator,
