@@ -92,6 +92,7 @@ pub fn main() !void {
         defer writer.close();
 
         try writer.writeAll(
+            \\pub const c = @import("c");
             \\pub const extensions = @import("extensions/extensions.zig");
             \\
         );
@@ -126,7 +127,7 @@ fn writeExtension(
     defer writer.interface.flush() catch @panic("OOM");
 
     try writer.interface.writeAll(
-        \\const c = @import("openxr");
+        \\const c = @import("c");
         \\
         \\
     );
