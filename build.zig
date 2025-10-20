@@ -14,11 +14,11 @@ pub fn build(b: *std.Build) !void {
         if (windows.getVswhere(b.allocator)) |vswhere| {
             if (windows.getVcInstall(b.allocator, vswhere)) |vcinstall| {
                 const bat = b.fmt("{s}/VC/Auxiliary/Build/vcvars64.bat", .{vcinstall});
-                // std.log.debug("bat => {s}", .{bat});
                 const run = b.addSystemCommand(&.{ "cmd.exe", "/c", bat, "&", "set" });
 
                 const wf = b.addNamedWriteFiles("vcenv");
                 _ = wf.addCopyFile(run.captureStdOut(), "vcenv");
+                wf.step.name = "WtiteFile: vcenv output";
             }
         }
     }

@@ -2,14 +2,9 @@ const std = @import("std");
 const zbk = @import("zbk");
 
 pub fn build(b: *std.Build) void {
-    const zbk_dep = b.dependency("zbk", .{});
-
-    const vcenv_wf = zbk_dep.namedWriteFiles("vcenv");
-    const vcenv = vcenv_wf.getDirectory().path(b, "vcenv");
-
     const dll = zbk.cpp.cmake.build(b, .{
         .source = b.path("dll"),
-        .vcenv = vcenv,
+        .use_vcenv = true,
     });
 
     const install = b.addInstallDirectory(.{

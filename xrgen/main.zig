@@ -88,14 +88,18 @@ pub fn main() !void {
     }
 
     {
-        var writer = try openFile(out_dir, "xr.zig");
-        defer writer.close();
+        var file = try openFile(out_dir, "xr.zig");
+        defer file.close();
 
-        try writer.writeAll(
+        try file.writeAll(
+            \\const std = @import("std");
             \\pub const c = @import("c");
             \\pub const extensions = @import("extensions/extensions.zig");
             \\
+            \\
         );
+        try file.writeAll(@embedFile("snippets.zig"));
+        try file.writeAll("\n");
     }
 }
 

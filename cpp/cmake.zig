@@ -1,4 +1,5 @@
 const std = @import("std");
+const windows = @import("../windows/windows.zig");
 
 pub const CmakeBuildType = union(enum) {
     Release,
@@ -10,7 +11,7 @@ pub const CmakeOptions = struct {
     build_dir_name: []const u8 = "build",
     ndk_path: ?[]const u8 = null,
     build_type: CmakeBuildType = .Release,
-    vcenv: ?std.Build.LazyPath = null,
+    use_vcenv: bool = false,
     args: []const []const u8 = &.{},
 };
 
@@ -62,9 +63,13 @@ pub const SetEnvFromVcenv = struct {
         const b = step.owner;
 
         const abs_path = b.pathFromRoot(self.vcenv.getPath(b));
-        // std.log.debug("abs_path: {s}", .{abs_path});
 
-        var file = try std.fs.openFileAbsolute(abs_path, .{});
+        var file = std.fs.openFileAbsolute(abs_path, .{}) catch |e| {
+            if (e == error.FileNotFound) {
+                std.log.debug("dependOn? FileNotFound: {s}", .{abs_path});
+            }
+            return e;
+        };
         defer file.close();
         var buffer: [4096]u8 = undefined;
         var reader = file.reader(&buffer);
@@ -96,7 +101,30 @@ pub const CmakeStep = struct {
     prefix: *std.Build.Step.WriteFile,
 };
 
+fn getVcEnv(b: *std.Build) !std.Build.LazyPath {
+    if (b.graph.host.result.os.tag != .windows) {
+        return error.not_windows_host;
+    }
+    const vswhere = windows.getVswhere(b.allocator) orelse {
+        return error.no_vswhere;
+    };
+    const vcinstall = windows.getVcInstall(b.allocator, vswhere) orelse {
+        return error.no_vcinstall;
+    };
+    const bat = b.fmt("{s}/VC/Auxiliary/Build/vcvars64.bat", .{vcinstall});
+    const run = b.addSystemCommand(&.{ "cmd.exe", "/c", bat, "&", "set" });
+    return run.captureStdOut();
+}
+
 pub fn build(b: *std.Build, opts: CmakeOptions) CmakeStep {
+    const maybe_vcenv: ?std.Build.LazyPath = if (opts.use_vcenv)
+        getVcEnv(b) catch |e| {
+            std.log.err("{s}", .{@errorName(e)});
+            @panic("no vcenv");
+        }
+    else
+        null;
+
     //
     // configure
     //
@@ -106,7 +134,7 @@ pub fn build(b: *std.Build, opts: CmakeOptions) CmakeStep {
         "Ninja",
     });
     cmake_configure.setName("cmake configure");
-    if (opts.vcenv) |vcenv| {
+    if (maybe_vcenv) |vcenv| {
         _ = SetEnvFromVcenv.create(b, cmake_configure, vcenv);
     }
 
@@ -145,12 +173,14 @@ pub fn build(b: *std.Build, opts: CmakeOptions) CmakeStep {
         cmake_configure.addArgs(opts.args);
     }
 
+    const install_prefix = cmake_configure.addPrefixedOutputFileArg("-DCMAKE_INSTALL_PREFIX=", "prefix");
+
     //
     // build
     //
     const cmake_build = b.addSystemCommand(&.{ "cmake", "--build" });
     cmake_build.setName("cmake build");
-    if (opts.vcenv) |vcenv| {
+    if (maybe_vcenv) |vcenv| {
         _ = SetEnvFromVcenv.create(b, cmake_build, vcenv);
     }
     cmake_build.addDirectoryArg(build_dir);
@@ -166,11 +196,12 @@ pub fn build(b: *std.Build, opts: CmakeOptions) CmakeStep {
 
     // --prefix
     cmake_install.addArg("--prefix");
-    const prefix_dir = cmake_install.addOutputDirectoryArg("prefix");
+    // const prefix_dir = cmake_install.addOutputDirectoryArg("prefix");
+    cmake_install.addFileArg(install_prefix);
 
     const wf = b.addNamedWriteFiles("prefix");
     wf.step.dependOn(&cmake_install.step);
-    _ = wf.addCopyDirectory(prefix_dir, "", .{});
+    _ = wf.addCopyDirectory(install_prefix, "", .{});
 
     return CmakeStep{
         .configure = cmake_configure,
