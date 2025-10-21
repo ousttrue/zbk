@@ -62,13 +62,9 @@ pub const SetEnvFromVcenv = struct {
         const self: *@This() = @fieldParentPtr("step", step);
         const b = step.owner;
 
-        const abs_path = b.pathFromRoot(self.vcenv.getPath(b));
-
-        var file = std.fs.openFileAbsolute(abs_path, .{}) catch |e| {
-            if (e == error.FileNotFound) {
-                std.log.debug("dependOn? FileNotFound: {s}", .{abs_path});
-            }
-            return e;
+        const path3 = self.vcenv.getPath3(b, step);
+        var file = b.cache_root.handle.openFile(path3.sub_path, .{}) catch |e| {
+            return step.fail("{s}: {s}", .{ @errorName(e), path3.sub_path });
         };
         defer file.close();
         var buffer: [4096]u8 = undefined;
@@ -84,7 +80,6 @@ pub const SetEnvFromVcenv = struct {
                 const value = line[pos + 1 ..];
                 for (ENVS) |env| {
                     if (std.ascii.eqlIgnoreCase(env, key)) {
-                        // std.log.debug("{s} => {s}", .{ key, value });
                         self.run.setEnvironmentVariable(key, value);
                         break;
                     }
@@ -101,27 +96,28 @@ pub const CmakeStep = struct {
     prefix: *std.Build.Step.WriteFile,
 };
 
-fn getVcEnv(b: *std.Build) !std.Build.LazyPath {
-    if (b.graph.host.result.os.tag != .windows) {
-        return error.not_windows_host;
-    }
-    const vswhere = windows.getVswhere(b.allocator) orelse {
-        return error.no_vswhere;
-    };
-    const vcinstall = windows.getVcInstall(b.allocator, vswhere) orelse {
-        return error.no_vcinstall;
-    };
-    const bat = b.fmt("{s}/VC/Auxiliary/Build/vcvars64.bat", .{vcinstall});
-    const run = b.addSystemCommand(&.{ "cmd.exe", "/c", bat, "&", "set" });
-    return run.captureStdOut();
-}
+// fn getVcEnv(b: *std.Build) !std.Build.LazyPath {
+//     if (b.graph.host.result.os.tag != .windows) {
+//         return error.not_windows_host;
+//     }
+//     const vswhere = windows.getVswhere(b.allocator) orelse {
+//         return error.no_vswhere;
+//     };
+//     const vcinstall = windows.getVcInstall(b.allocator, vswhere) orelse {
+//         return error.no_vcinstall;
+//     };
+//     const bat = b.fmt("{s}/VC/Auxiliary/Build/vcvars64.bat", .{vcinstall});
+//     const run = b.addSystemCommand(&.{ "cmd.exe", "/c", bat, "&", "set" });
+//     return run.captureStdOut();
+// }
+
+// const print_step = util.PrintLazyPathContent.create(b, vcenv.captureStdOut());
+// print_step.step.dependOn(&vcenv.step);
+// b.getInstallStep().dependOn(&print_step.step);
 
 pub fn build(b: *std.Build, opts: CmakeOptions) CmakeStep {
     const maybe_vcenv: ?std.Build.LazyPath = if (opts.use_vcenv)
-        getVcEnv(b) catch |e| {
-            std.log.err("{s}", .{@errorName(e)});
-            @panic("no vcenv");
-        }
+        windows.GetVcEnv.create(b).captureStdOut()
     else
         null;
 
