@@ -1,1 +1,1 @@
-pub const cmake = @import("cmake.zig");
+pub const CMakeStep = @import("CMakeStep.zig");

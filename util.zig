@@ -17,6 +17,38 @@ pub fn getEnvPath(allocator: std.mem.Allocator, env_name: []const u8) ?[]const u
     return env_path;
 }
 
+pub const SystemOpts = struct {
+    envmap: ?*std.process.EnvMap = null,
+    cwd: ?[]const u8 = null,
+};
+
+pub fn system(
+    allocator: std.mem.Allocator,
+    argv: []const []const u8,
+    opts: SystemOpts,
+) ?[]const u8 {
+    var child = std.process.Child.init(argv, allocator);
+    child.stdout_behavior = .Pipe;
+    child.env_map = opts.envmap;
+    child.cwd = opts.cwd;
+
+    child.spawn() catch @panic("OOM");
+    child.waitForSpawn() catch @panic("OOM");
+    var output: ?[]const u8 = null;
+    if (child.stdout) |stdout| {
+        var stdout_reader = stdout.readerStreaming(&.{});
+        const o = stdout_reader.interface.allocRemaining(allocator, .unlimited) catch |e| @panic(@errorName(e));
+        const trimed = std.mem.trimEnd(u8, o, "\r\n");
+        if (trimed.len > 0) {
+            output = trimed;
+        }
+    } else {
+        @panic("no stdout");
+    }
+    _ = child.wait() catch @panic("OOM");
+    return output;
+}
+
 pub const PrintLazyPath = struct {
     step: std.Build.Step,
     path: std.Build.LazyPath,

@@ -1,5 +1,7 @@
 const std = @import("std");
-const getEnvPath = @import("../util.zig").getEnvPath;
+const util = @import("../util.zig");
+const getEnvPath = util.getEnvPath;
+const system = util.system;
 
 pub fn getVswhere(b: *std.Build) ?[]const u8 {
     var env = std.process.getEnvMap(b.allocator) catch @panic("OOM");
@@ -108,14 +110,15 @@ pub const GetVcEnv = struct {
         }
 
         const digest = man.final();
-        const cache_file = try b.cache_root.join(b.allocator, &.{ "o", &digest, "output" });
-        this.output.path = cache_file;
         const cache_dir = try b.cache_root.join(b.allocator, &.{ "o", &digest });
         b.cache_root.handle.makePath(cache_dir) catch |err| {
             return step.fail("unable to make path '{f}{s}': {s}", .{
                 b.cache_root, cache_dir, @errorName(err),
             });
         };
+
+        const cache_file = try b.cache_root.join(b.allocator, &.{ "o", &digest, "output" });
+        this.output.path = cache_file;
 
         const path3 = this.input.getPath3(b, step);
         const path = try path3.toString(b.allocator);
@@ -189,26 +192,6 @@ pub const GetVcEnv = struct {
 //     }
 // };
 
-fn system(allocator: std.mem.Allocator, argv: []const []const u8) ?[]const u8 {
-    var child = std.process.Child.init(argv, allocator);
-    child.stdout_behavior = .Pipe;
-    child.spawn() catch @panic("OOM");
-    child.waitForSpawn() catch @panic("OOM");
-    var output: ?[]const u8 = null;
-    if (child.stdout) |stdout| {
-        var stdout_reader = stdout.readerStreaming(&.{});
-        const o = stdout_reader.interface.allocRemaining(allocator, .unlimited) catch |e| @panic(@errorName(e));
-        const trimed = std.mem.trimEnd(u8, o, "\r\n");
-        if (trimed.len > 0) {
-            output = trimed;
-        }
-    } else {
-        @panic("no stdout");
-    }
-    _ = child.wait() catch @panic("OOM");
-    return output;
-}
-
 pub fn getVcInstall(allocator: std.mem.Allocator, vswhere: []const u8) ?[]const u8 {
     if (system(allocator, &.{
         vswhere,
@@ -219,7 +202,7 @@ pub fn getVcInstall(allocator: std.mem.Allocator, vswhere: []const u8) ?[]const 
         "Microsoft.VisualStudio.Product.BuildTools",
         "-property",
         "installationPath",
-    })) |output| {
+    }, .{})) |output| {
         return output;
     }
 
@@ -232,7 +215,7 @@ pub fn getVcInstall(allocator: std.mem.Allocator, vswhere: []const u8) ?[]const 
         "Microsoft.VisualStudio.Product.Community",
         "-property",
         "installationPath",
-    })) |output| {
+    }, .{})) |output| {
         return output;
     }
 
@@ -245,7 +228,7 @@ pub fn getVcInstall(allocator: std.mem.Allocator, vswhere: []const u8) ?[]const 
         "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
         "-property",
         "installationPath",
-    })) |output| {
+    }, .{})) |output| {
         return output;
     }
 
