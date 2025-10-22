@@ -20,6 +20,7 @@ pub fn getEnvPath(allocator: std.mem.Allocator, env_name: []const u8) ?[]const u
 pub const SystemOpts = struct {
     envmap: ?*std.process.EnvMap = null,
     cwd: ?[]const u8 = null,
+    stdout: std.process.Child.StdIo = .Inherit,
 };
 
 pub fn system(
@@ -28,22 +29,24 @@ pub fn system(
     opts: SystemOpts,
 ) ?[]const u8 {
     var child = std.process.Child.init(argv, allocator);
-    child.stdout_behavior = .Pipe;
+    child.stdout_behavior = opts.stdout;
     child.env_map = opts.envmap;
     child.cwd = opts.cwd;
 
     child.spawn() catch @panic("OOM");
     child.waitForSpawn() catch @panic("OOM");
     var output: ?[]const u8 = null;
-    if (child.stdout) |stdout| {
-        var stdout_reader = stdout.readerStreaming(&.{});
-        const o = stdout_reader.interface.allocRemaining(allocator, .unlimited) catch |e| @panic(@errorName(e));
-        const trimed = std.mem.trimEnd(u8, o, "\r\n");
-        if (trimed.len > 0) {
-            output = trimed;
+    if (child.stdout_behavior == .Pipe) {
+        if (child.stdout) |stdout| {
+            var stdout_reader = stdout.readerStreaming(&.{});
+            const o = stdout_reader.interface.allocRemaining(allocator, .unlimited) catch |e| @panic(@errorName(e));
+            const trimed = std.mem.trimEnd(u8, o, "\r\n");
+            if (trimed.len > 0) {
+                output = trimed;
+            }
+        } else {
+            @panic("no stdout");
         }
-    } else {
-        @panic("no stdout");
     }
     _ = child.wait() catch @panic("OOM");
     return output;

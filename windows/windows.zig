@@ -202,7 +202,7 @@ pub fn getVcInstall(allocator: std.mem.Allocator, vswhere: []const u8) ?[]const 
         "Microsoft.VisualStudio.Product.BuildTools",
         "-property",
         "installationPath",
-    }, .{})) |output| {
+    }, .{ .stdout = .Pipe })) |output| {
         return output;
     }
 
@@ -215,7 +215,7 @@ pub fn getVcInstall(allocator: std.mem.Allocator, vswhere: []const u8) ?[]const 
         "Microsoft.VisualStudio.Product.Community",
         "-property",
         "installationPath",
-    }, .{})) |output| {
+    }, .{ .stdout = .Pipe })) |output| {
         return output;
     }
 
@@ -228,7 +228,7 @@ pub fn getVcInstall(allocator: std.mem.Allocator, vswhere: []const u8) ?[]const 
         "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
         "-property",
         "installationPath",
-    }, .{})) |output| {
+    }, .{ .stdout = .Pipe })) |output| {
         return output;
     }
 
