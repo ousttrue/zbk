@@ -27,7 +27,7 @@ pub fn system(
     allocator: std.mem.Allocator,
     argv: []const []const u8,
     opts: SystemOpts,
-) ?[]const u8 {
+) !?[]const u8 {
     var child = std.process.Child.init(argv, allocator);
     child.stdout_behavior = opts.stdout;
     child.env_map = opts.envmap;
@@ -35,22 +35,71 @@ pub fn system(
 
     child.spawn() catch @panic("OOM");
     child.waitForSpawn() catch @panic("OOM");
+
     var output: ?[]const u8 = null;
-    if (child.stdout_behavior == .Pipe) {
+    if (opts.stdout == .Pipe) {
         if (child.stdout) |stdout| {
             var stdout_reader = stdout.readerStreaming(&.{});
-            const o = stdout_reader.interface.allocRemaining(allocator, .unlimited) catch |e| @panic(@errorName(e));
+            const o = stdout_reader.interface.allocRemaining(allocator, .unlimited) catch |e|
+                @panic(@errorName(e));
             const trimed = std.mem.trimEnd(u8, o, "\r\n");
             if (trimed.len > 0) {
                 output = trimed;
+            } else {
+                // std.log.warn("zero output", .{});
             }
-        } else {
-            @panic("no stdout");
         }
     }
-    _ = child.wait() catch @panic("OOM");
-    return output;
+
+    const term = child.wait() catch @panic("OOM");
+    switch (term) {
+        .Exited => |exit| {
+            if (exit == 0) {
+                if (opts.stdout == .Pipe) {
+                    return output;
+                }
+            } else {
+                std.log.err("exit: {}", .{exit});
+                return error.ErrorExit;
+            }
+
+            return null;
+        },
+        else => {
+            std.log.err("not exit", .{});
+            return error.NotExit;
+        },
+    }
 }
+
+pub const CommandRunner = struct {
+    args: std.array_list.Managed([]const u8),
+
+    pub fn init(allocator: std.mem.Allocator, args: []const []const u8) @This() {
+        var this = @This(){
+            .args = .init(allocator),
+        };
+        this.args.appendSlice(args) catch @panic("OOM");
+        return this;
+    }
+
+    pub fn deinit(this: *@This()) void {
+        this.args.deinit();
+    }
+
+    pub fn addArgs(this: *@This(), args: []const []const u8) void {
+        this.args.appendSlice(args) catch @panic("OOM");
+    }
+
+    pub fn run(
+        this: *@This(),
+        b: *std.Build,
+        envmap: ?*std.process.EnvMap,
+        cwd: []const u8,
+    ) !void {
+        _ = try system(b.allocator, this.args.items, .{ .envmap = envmap, .cwd = cwd });
+    }
+};
 
 pub const PrintLazyPath = struct {
     step: std.Build.Step,

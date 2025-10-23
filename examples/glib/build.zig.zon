@@ -1,0 +1,32 @@
+.{
+    .name = .glib,
+    .version = "0.0.1",
+    .dependencies = .{
+        .zbk = .{
+            .path = "../..",
+        },
+        .pkgconf = .{
+            .url = "https://github.com/pkgconf/pkgconf/archive/refs/tags/pkgconf-2.5.1.zip",
+            .hash = "N-V-__8AAKvJCACSfZfmzp3wRCQx2vaa-36nOt1i4-CWJRK7",
+        },
+        .@"gobject-introspection" = .{
+            .url = "https://github.com/GNOME/gobject-introspection/archive/refs/tags/1.86.0.zip",
+            .hash = "N-V-__8AADc1gABayKvd8EL47-iyC6XnMXmyJjRo_4oPLp8K",
+        },
+        .gvdb = .{
+            .url = "git+https://github.com/GNOME/gvdb.git#4758f6fb7f889e074e13df3f914328f3eecb1fd3",
+            .hash = "N-V-__8AAFOxAQAw-mZ3xUYogaxE54e_QBLkVF1qy_UJNJyp",
+        },
+        .glib = .{
+            .url = "https://download.gnome.org/sources/glib/2.86/glib-2.86.1.tar.xz",
+            .hash = "N-V-__8AALaLIQM3Wb97pdYl6-XofaMudEfyyarOceZZq98M",
+        },
+        .@"pkg-config" = .{
+            .url = "https://pkgconfig.freedesktop.org/releases/pkg-config-0.29.2.tar.gz",
+            .hash = "N-V-__8AAL6gsQCzq3F5Ox2fkcX1Zlu3cesJkXuxPkSXc12W",
+        },
+    },
+    .minimum_zig_version = "0.15.1",
+    .paths = .{""},
+    .fingerprint = 0xd1fbf2789da780b7,
+}

@@ -3,9 +3,29 @@ const util = @import("../util.zig");
 const getEnvPath = util.getEnvPath;
 const system = util.system;
 
+pub const ENVS = [_][]const u8{
+    "PATH",
+    "INCLUDE",
+    "LIB",
+    "LIBPATH",
+    "VCINSTALLDIR",
+    "VSINSTALLDIR",
+    "VCTOOLSINSTALLDIR",
+    "VSCMD_VER",
+};
+
+pub fn isVcenvContains(key: []const u8) bool {
+    for (ENVS) |env| {
+        if (std.ascii.eqlIgnoreCase(env, key)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 pub fn getVswhere(b: *std.Build) ?[]const u8 {
     var env = std.process.getEnvMap(b.allocator) catch @panic("OOM");
-    defer env.deinit();
+    // defer env.deinit();
     if (env.get("ProgramFiles(x86)")) |program_files| {
         if (b.findProgram(&.{"vswhere"}, &.{b.fmt(
             "{s}/Microsoft Visual Studio/Installer",
@@ -52,9 +72,15 @@ const FindVcInstall = struct {
     fn make(step: *std.Build.Step, _: std.Build.Step.MakeOptions) anyerror!void {
         const this: *@This() = @fieldParentPtr("step", step);
         const b = step.owner;
-        const vswhere = getVswhere(b) orelse @panic("no vswhere");
-        const vcinstall = getVcInstall(b.allocator, vswhere) orelse @panic("no vcinstall");
-        this.output.path = b.fmt("{s}/VC/Auxiliary/Build/vcvars64.bat", .{vcinstall});
+        if (getVswhere(b)) |vswhere| {
+            if (getVcInstall(b, vswhere)) |vcinstall| {
+                this.output.path = b.fmt("{s}/VC/Auxiliary/Build/vcvars64.bat", .{vcinstall});
+            } else {
+                std.log.err("vcinstall not found", .{});
+            }
+        } else {
+            std.log.err("vswhere not found", .{});
+        }
     }
 
     pub fn getVcVarsBat(this: *@This()) std.Build.LazyPath {
@@ -192,8 +218,8 @@ pub const GetVcEnv = struct {
 //     }
 // };
 
-pub fn getVcInstall(allocator: std.mem.Allocator, vswhere: []const u8) ?[]const u8 {
-    if (system(allocator, &.{
+pub fn getVcInstall(b: *std.Build, vswhere: []const u8) ?[]const u8 {
+    if (system(b.allocator, &.{
         vswhere,
         "-latest",
         "-products",
@@ -202,11 +228,15 @@ pub fn getVcInstall(allocator: std.mem.Allocator, vswhere: []const u8) ?[]const 
         "Microsoft.VisualStudio.Product.BuildTools",
         "-property",
         "installationPath",
-    }, .{ .stdout = .Pipe })) |output| {
-        return output;
+    }, .{ .stdout = .Pipe, .envmap = &b.graph.env_map })) |maybe_output| {
+        if (maybe_output) |output| {
+            return output;
+        }
+    } else |e| {
+        std.log.err("{s}", .{@errorName(e)});
     }
 
-    if (system(allocator, &.{
+    if (system(b.allocator, &.{
         vswhere,
         "-latest",
         "-products",
@@ -215,11 +245,15 @@ pub fn getVcInstall(allocator: std.mem.Allocator, vswhere: []const u8) ?[]const 
         "Microsoft.VisualStudio.Product.Community",
         "-property",
         "installationPath",
-    }, .{ .stdout = .Pipe })) |output| {
-        return output;
+    }, .{ .stdout = .Pipe, .envmap = &b.graph.env_map })) |maybe_output| {
+        if (maybe_output) |output| {
+            return output;
+        }
+    } else |e| {
+        std.log.err("{s}", .{@errorName(e)});
     }
 
-    if (system(allocator, &.{
+    if (system(b.allocator, &.{
         vswhere,
         "-latest",
         "-products",
@@ -228,8 +262,12 @@ pub fn getVcInstall(allocator: std.mem.Allocator, vswhere: []const u8) ?[]const 
         "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
         "-property",
         "installationPath",
-    }, .{ .stdout = .Pipe })) |output| {
-        return output;
+    }, .{ .stdout = .Pipe, .envmap = &b.graph.env_map })) |maybe_output| {
+        if (maybe_output) |output| {
+            return output;
+        }
+    } else |e| {
+        std.log.err("{s}", .{@errorName(e)});
     }
 
     return null;

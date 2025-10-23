@@ -8,18 +8,13 @@ pub const BuildType = union(enum) {
 
 pub const Options = struct {
     source: []const u8,
-    // if multi target, should use different name for each target.
-    build_dir_name: []const u8 = "build",
-    ndk_path: ?[]const u8 = null,
-    build_type: BuildType = .Release,
-    use_vcenv: bool = false,
     args: []const []const u8 = &.{},
 };
 
 step: std.Build.Step,
 // input
 opts: Options,
-vcenv: ?std.Build.LazyPath = null,
+vcenv: std.Build.LazyPath = undefined,
 // output
 output: std.Build.GeneratedFile = undefined,
 
@@ -28,7 +23,7 @@ pub fn create(b: *std.Build, opts: Options) *@This() {
     this.* = .{
         .step = std.Build.Step.init(.{
             .id = .custom,
-            .name = "CMakeStep",
+            .name = "NMakeStep",
             .owner = b,
             .makeFn = make,
         }),
@@ -38,7 +33,7 @@ pub fn create(b: *std.Build, opts: Options) *@This() {
         .step = &this.step,
     };
 
-    if (opts.use_vcenv) {
+    {
         const vcenv = windows.GetVcEnv.create(b).captureStdOut();
         vcenv.addStepDependencies(&this.step);
         this.vcenv = vcenv;
@@ -52,8 +47,8 @@ fn make(step: *std.Build.Step, _: std.Build.Step.MakeOptions) anyerror!void {
     const b = step.owner;
 
     var maybe_envmap: ?*std.process.EnvMap = null;
-    if (this.vcenv) |vcenv| {
-        const path3 = vcenv.getPath3(b, step);
+    {
+        const path3 = this.vcenv.getPath3(b, step);
         var file = try b.cache_root.handle.openFile(path3.sub_path, .{});
         defer file.close();
 
@@ -74,13 +69,15 @@ fn make(step: *std.Build.Step, _: std.Build.Step.MakeOptions) anyerror!void {
             }
         }
 
-        var it = std.mem.splitSequence(u8, output, "\r\n");
-        while (it.next()) |line| {
-            if (std.mem.indexOf(u8, line, "=")) |pos| {
-                const key = line[0..pos];
-                const value = line[pos + 1 ..];
-                if (windows.isVcenvContains(key)) {
-                    try envmap.put(key, value);
+        {
+            var it = std.mem.splitSequence(u8, output, "\r\n");
+            while (it.next()) |line| {
+                if (std.mem.indexOf(u8, line, "=")) |pos| {
+                    const key = line[0..pos];
+                    const value = line[pos + 1 ..];
+                    if (windows.isVcenvContains(key)) {
+                        try envmap.put(key, value);
+                    }
                 }
             }
         }
@@ -91,7 +88,6 @@ fn make(step: *std.Build.Step, _: std.Build.Step.MakeOptions) anyerror!void {
     defer man.deinit();
 
     man.hash.addBytes(this.opts.source);
-    man.hash.addBytes(@tagName(this.opts.build_type));
     for (this.opts.args) |arg| {
         man.hash.addBytes(arg);
     }
@@ -106,13 +102,10 @@ fn make(step: *std.Build.Step, _: std.Build.Step.MakeOptions) anyerror!void {
             man.hash.addBytes(entry.value_ptr.*);
         }
     }
-    if (this.opts.ndk_path) |ndk_path| {
-        man.hash.addBytes(ndk_path);
-    }
 
     if (try step.cacheHitAndWatch(&man)) {
         const digest = man.final();
-        const prefix_dir = try b.cache_root.join(b.allocator, &.{ "o", &digest, "prefix" });
+        const prefix_dir = try b.cache_root.join(b.allocator, &.{ "o", &digest });
         this.output.path = prefix_dir;
         return;
     }
@@ -130,70 +123,21 @@ fn make(step: *std.Build.Step, _: std.Build.Step.MakeOptions) anyerror!void {
         defer dir.close();
     }
 
-    const prefix_dir = try b.cache_root.join(b.allocator, &.{ "o", &digest, "prefix" });
+    const prefix_dir = try b.cache_root.join(b.allocator, &.{ "o", &digest });
     this.output.path = prefix_dir;
 
-    // const cmake = try b.findProgram(&.{"cmake"}, &.{});
+    const nmake = "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/nmake.exe";
 
-    //
-    // configure
-    //
-    var cmake_configure = CommandRunner.init(b.allocator, &.{
-        "cmake",
-        "-G",
-        "Ninja",
-        "-S",
-        this.opts.source,
-        "-B",
-        "build",
-        "-DCMAKE_INSTALL_PREFIX=prefix",
-        "-DCMAKE_POLICY_VERSION_MINIMUM=3.10",
-        "-DCMAKE_POLICY_DEFAULT_CMP0148=OLD",
+    var nmake_run = CommandRunner.init(b.allocator, &.{
+        nmake,
     });
-    defer cmake_configure.deinit();
-
-    // --toolchain
-    if (this.opts.ndk_path) |ndk_path| {
-        // android ndk
-        cmake_configure.addArgs(&.{
-            "-DANDROID_ABI=arm64-v8a",
-            "-DANDROID_PLATFORM=android-30",
-            b.fmt("-DANDROID_NDK={s}", .{ndk_path}),
-            b.fmt("-DCMAKE_TOOLCHAIN_FILE={s}/build/cmake/android.toolchain.cmake", .{ndk_path}),
-        });
-    }
-
-    switch (this.opts.build_type) {
-        .Release => {
-            cmake_configure.addArgs(&.{"-DCMAKE_BUILD_TYPE=Release"});
-        },
-    }
+    defer nmake_run.deinit();
 
     if (this.opts.args.len > 0) {
-        cmake_configure.addArgs(this.opts.args);
+        nmake_run.addArgs(this.opts.args);
     }
 
-    try cmake_configure.run(b, maybe_envmap, cwd);
-
-    //
-    // build
-    //
-    var cmake_build = CommandRunner.init(b.allocator, &.{
-        "cmake",
-        "--build",
-        "build",
-    });
-    try cmake_build.run(b, maybe_envmap, cwd);
-
-    //
-    // install
-    //
-    var cmake_install = CommandRunner.init(b.allocator, &.{
-        "cmake",
-        "--install",
-        "build",
-    });
-    try cmake_install.run(b, maybe_envmap, cwd);
+    try nmake_run.run(b, maybe_envmap, this.opts.source);
 
     try step.writeManifestAndWatch(&man);
 }
