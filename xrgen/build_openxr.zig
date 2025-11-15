@@ -82,12 +82,8 @@ pub fn build_xrgen(
         // run xrgen
         const xr_xml = openxr_sdk.path(b, "specification/registry/xr.xml");
         const xr_zig_dir = runXrGen(b, gen, xr_xml);
-        const xr_zig_install_step = b.addInstallDirectory(.{
-            .source_dir = xr_zig_dir,
-            .install_dir = .{ .prefix = void{} },
-            .install_subdir = "src/xr",
-        });
-        b.getInstallStep().dependOn(&xr_zig_install_step.step);
+        const xr_wf = b.addNamedWriteFiles("openxr");
+        _ = xr_wf.addCopyDirectory(xr_zig_dir, "", .{});
     }
 }
 
