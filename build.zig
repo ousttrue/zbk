@@ -8,8 +8,5 @@ pub const windows = @import("windows/windows.zig");
 pub const openxr = @import("xrgen/build_openxr.zig");
 
 pub fn build(b: *std.Build) !void {
-    const target = b.standardTargetOptions(.{});
-    const optimize = b.standardOptimizeOption(.{});
-
-    openxr.build_xrgen(b, target, optimize);
+    openxr.build_xrgen(b);
 }

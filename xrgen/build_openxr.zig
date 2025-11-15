@@ -45,21 +45,22 @@ fn getXrSdkpath(b: *std.Build) ?std.Build.LazyPath {
 //
 pub fn build_xrgen(
     b: *std.Build,
-    target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
 ) void {
+    const host_target = b.graph.host;
+    const host_optimize = std.builtin.OptimizeMode.ReleaseSafe;
+
     const xml = b.addModule("xml", .{
         .root_source_file = b.path("xml/xml.zig"),
-        .target = target,
-        .optimize = optimize,
+        .target = host_target,
+        .optimize = host_optimize,
     });
 
     const gen = b.addExecutable(.{
         .name = "xr_gen",
         .root_module = b.addModule("xrgen", .{
             .root_source_file = b.path("xrgen/main.zig"),
-            .target = target,
-            .optimize = optimize,
+            .target = host_target,
+            .optimize = host_optimize,
             .imports = &.{
                 .{
                     .name = "xml",
@@ -81,20 +82,6 @@ pub fn build_xrgen(
         // run xrgen
         const xr_xml = openxr_sdk.path(b, "specification/registry/xr.xml");
         const xr_zig_dir = runXrGen(b, gen, xr_xml);
-        const xr_module = b.addModule("openxr", .{
-            .root_source_file = xr_zig_dir.path(b, "xr.zig"),
-        });
-
-        // translate-c
-        const t = b.addTranslateC(.{
-            .target = target,
-            .optimize = optimize,
-            .root_source_file = b.path("xrgen/xr_win32.h"),
-        });
-        t.addIncludePath(openxr_sdk.path(b, "include"));
-        const xr_tranlated = t.createModule();
-        xr_module.addImport("c", xr_tranlated);
-
         const xr_zig_install_step = b.addInstallDirectory(.{
             .source_dir = xr_zig_dir,
             .install_dir = .{ .prefix = void{} },
