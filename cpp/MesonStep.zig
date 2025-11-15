@@ -14,10 +14,14 @@ pub const Options = struct {
     source: []const u8,
     // if multi target, should use different name for each target.
     build_dir_name: []const u8 = "build",
-    ndk_path: ?[]const u8 = null,
     build_type: BuildType = .release,
     // use_vcenv: bool = false,
     args: []const []const u8 = &.{},
+
+    // /usr/bin/pkg-conf
+    PKG_CONF: ?[]const u8 = null,
+    // /usr/lib/pkgconfig
+    PKG_CONFIG_PATH: ?[]const u8 = null,
 };
 
 step: std.Build.Step,
@@ -58,10 +62,6 @@ fn make(step: *std.Build.Step, _: std.Build.Step.MakeOptions) anyerror!void {
         man.hash.addBytes(arg);
     }
 
-    if (this.opts.ndk_path) |ndk_path| {
-        man.hash.addBytes(ndk_path);
-    }
-
     if (try step.cacheHitAndWatch(&man)) {
         const digest = man.final();
         const prefix_dir = try b.cache_root.join(b.allocator, &.{ "o", &digest, "prefix" });
@@ -92,7 +92,23 @@ fn make(step: *std.Build.Step, _: std.Build.Step.MakeOptions) anyerror!void {
 
     const meson = try b.findProgram(&.{"meson"}, &.{});
 
-    const maybe_envmap = &b.graph.env_map;
+    const envmap = try b.allocator.create(std.process.EnvMap); // = &b.graph.env_map;
+    envmap.* = .init(b.allocator);
+    {
+        var it = b.graph.env_map.iterator();
+        while (it.next()) |entry| {
+            try envmap.put(entry.key_ptr.*, entry.value_ptr.*);
+        }
+    }
+    if (this.opts.PKG_CONFIG_PATH) |pkg_config_path| {
+        try envmap.put("PKG_CONFIG_PATH", pkg_config_path);
+    }
+    if (this.opts.PKG_CONF) |pkg_conf| {
+        if (std.fs.path.dirname(pkg_conf)) |pkg_conf_bin| {
+            const orig_path = envmap.get("PATH").?;
+            try envmap.put("PATH", b.fmt("{s};{s}", .{ orig_path, pkg_conf_bin }));
+        }
+    }
 
     //
     // configure
@@ -117,7 +133,7 @@ fn make(step: *std.Build.Step, _: std.Build.Step.MakeOptions) anyerror!void {
         // this.opts.source,
     });
 
-    try meson_setup.run(b, maybe_envmap, this.opts.source);
+    try meson_setup.run(b, envmap, this.opts.source);
 
     //
     // build
@@ -128,7 +144,7 @@ fn make(step: *std.Build.Step, _: std.Build.Step.MakeOptions) anyerror!void {
         "-C",
         "build",
     });
-    try meson_compile.run(b, maybe_envmap, this.opts.source);
+    try meson_compile.run(b, envmap, this.opts.source);
 
     //
     // install
@@ -139,7 +155,7 @@ fn make(step: *std.Build.Step, _: std.Build.Step.MakeOptions) anyerror!void {
         "-C",
         "build",
     });
-    try meson_install.run(b, maybe_envmap, this.opts.source);
+    try meson_install.run(b, envmap, this.opts.source);
 
     try step.writeManifestAndWatch(&man);
 }

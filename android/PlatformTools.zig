@@ -16,6 +16,7 @@ pub fn adb_install(
     const run = b.addSystemCommand(&.{
         b.pathResolve(&.{ self.path, "adb.exe" }),
         "install",
+        "-r",
     });
     run.addFileArg(apk);
     return run;

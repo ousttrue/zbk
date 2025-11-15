@@ -112,8 +112,7 @@ fn make(step: *std.Build.Step, _: std.Build.Step.MakeOptions) anyerror!void {
 
     if (try step.cacheHitAndWatch(&man)) {
         const digest = man.final();
-        const prefix_dir = try b.cache_root.join(b.allocator, &.{ "o", &digest, "prefix" });
-        this.output.path = prefix_dir;
+        this.output.path = try b.cache_root.join(b.allocator, &.{ "o", &digest });
         return;
     }
 
@@ -130,8 +129,7 @@ fn make(step: *std.Build.Step, _: std.Build.Step.MakeOptions) anyerror!void {
         defer dir.close();
     }
 
-    const prefix_dir = try b.cache_root.join(b.allocator, &.{ "o", &digest, "prefix" });
-    this.output.path = prefix_dir;
+    this.output.path = try b.cache_root.join(b.allocator, &.{ "o", &digest });
 
     // const cmake = try b.findProgram(&.{"cmake"}, &.{});
 
@@ -198,8 +196,16 @@ fn make(step: *std.Build.Step, _: std.Build.Step.MakeOptions) anyerror!void {
     try step.writeManifestAndWatch(&man);
 }
 
-pub fn getInstallPrefix(this: *@This()) std.Build.LazyPath {
-    return .{ .generated = .{
+pub fn getBuild(this: *@This()) std.Build.LazyPath {
+    const cache_dir = std.Build.LazyPath{ .generated = .{
         .file = &this.output,
     } };
+    return cache_dir.path(this.step.owner, "build");
+}
+
+pub fn getInstallPrefix(this: *@This()) std.Build.LazyPath {
+    const cache_dir = std.Build.LazyPath{ .generated = .{
+        .file = &this.output,
+    } };
+    return cache_dir.path(this.step.owner, "prefix");
 }
