@@ -11,7 +11,7 @@ pub fn getProcs(
 ) void {
     inline for (std.meta.fields(@typeInfo(@TypeOf(table)).pointer.child)) |field| {
         const name: [*:0]const u8 = @ptrCast(field.name ++ "\x00");
-        var cmd_ptr: xr.PFN_xrVoidFunction = undefined;
+        var cmd_ptr: c.PFN_xrVoidFunction = undefined;
         const result = loader(instance, name, @ptrCast(&cmd_ptr));
         if (result != 0) @panic("loader");
         @field(table, field.name) = @ptrCast(cmd_ptr);
