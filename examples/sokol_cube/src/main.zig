@@ -3,6 +3,7 @@
 //
 //  Shader with uniform data.
 //------------------------------------------------------------------------------
+const std = @import("std");
 const sokol = @import("sokol");
 const slog = sokol.log;
 const sg = sokol.gfx;
@@ -26,6 +27,7 @@ export fn init() void {
         .environment = sglue.environment(),
         .logger = .{ .func = slog.func },
     });
+    std.log.debug("backend: {}", .{sg.queryBackend()});
 
     // cube vertex buffer
     state.bind.vertex_buffers[0] = sg.makeBuffer(.{

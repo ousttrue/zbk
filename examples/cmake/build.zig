@@ -2,9 +2,11 @@ const std = @import("std");
 const zbk = @import("zbk");
 
 pub fn build(b: *std.Build) void {
+    const target = b.standardTargetOptions(.{});
+
     const dll = zbk.cpp.CMakeStep.create(b, .{
         .source = b.path("dll").getPath(b),
-        .use_vcenv = true,
+        .use_vcenv = target.result.os.tag == .windows,
     });
 
     const install = b.addInstallDirectory(.{

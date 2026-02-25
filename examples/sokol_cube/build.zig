@@ -7,7 +7,10 @@ const PKG_NAME = "com.zbk.sokol_cube";
 
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
-    std.log.debug("build target: {s}", .{try target.result.linuxTriple(b.allocator)});
+    std.log.debug("build target: {s}, is_android => {}", .{
+        try target.result.linuxTriple(b.allocator),
+        target.result.abi.isAndroid(),
+    });
     const optimize = b.standardOptimizeOption(.{});
 
     const dep_sokol = b.dependency("sokol", .{
@@ -22,10 +25,12 @@ pub fn build(b: *std.Build) !void {
         .shdc_dep = dep_shdc,
         .input = "src/cube.glsl",
         .output = "shader.zig",
-        .slang = if (target.result.abi.isAndroid())
+        .slang = if (target.result.os.tag == .windows)
+            .{ .hlsl5 = true }
+        else if (target.result.abi.isAndroid())
             .{ .glsl310es = true }
         else
-            .{ .hlsl5 = true },
+            .{ .glsl410 = true },
     });
 
     const root_module = b.addModule("cube", .{
@@ -89,7 +94,11 @@ pub fn build(b: *std.Build) !void {
         // make apk from
         const apk = apk_builder.makeApk(b, .{
             .copy_list = &.{.{ .src = bin.getEmittedBin() }},
-            .android_manifest = try apk_builder.generateAndroidManifest(b, PKG_NAME, bin.name),
+            .android_manifest = try zbk.android.generateAndroidManifest(b, .{
+                .pkg_name = PKG_NAME,
+                .android_label = bin.name,
+                .api_level = API_LEVEL,
+            }),
             .keystore_password = keystore_password,
             .keystore_file = keystore.output,
             .resource_dir = b.path("res"),
