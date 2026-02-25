@@ -118,20 +118,24 @@ fn make(step: *std.Build.Step, _: std.Build.Step.MakeOptions) anyerror!void {
 
     const digest = man.final();
     const cache_dir = b.pathJoin(&.{ "o", &digest });
-    b.cache_root.handle.makePath(cache_dir) catch |err| {
-        return step.fail("unable to make path '{f}{s}': {s}", .{
-            b.cache_root, cache_dir, @errorName(err),
-        });
-    };
-    const cwd = b.fmt("{s}/o/{s}", .{ try b.cache_root.handle.realpathAlloc(b.allocator, ""), &digest });
+    {
+        const status = b.cache_root.handle.makePathStatus(cache_dir) catch |err| {
+            return step.fail("unable to make path '{f}{s}': {s}", .{
+                b.cache_root, cache_dir, @errorName(err),
+            });
+        };
+        _ = status;
+        // std.log.debug("CACHE_ROOT/{s} => {}", .{ cache_dir, status });
+    }
+    const cwd = try b.cache_root.handle.realpathAlloc(b.allocator, cache_dir);
+    // std.log.debug("CACHE_ROOT => {s}", .{cwd});
+    // const cwd = b.fmt("{s}/o/{s}", .{ cache_root, &digest });
     {
         var dir = try std.fs.openDirAbsolute(cwd, .{});
         defer dir.close();
     }
 
     this.output.path = try b.cache_root.join(b.allocator, &.{ "o", &digest });
-
-    // const cmake = try b.findProgram(&.{"cmake"}, &.{});
 
     //
     // configure
