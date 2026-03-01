@@ -1,6 +1,5 @@
 const std = @import("std");
 const zbk = @import("zbk");
-const ndk = zbk.android.ndk;
 
 const API_LEVEL = 35;
 const PKG_NAME = "org.zbk.hello";
@@ -13,9 +12,7 @@ pub fn build(b: *std.Build) !void {
     });
     const optimize = b.standardOptimizeOption(.{});
 
-    const android_home = zbk.getEnvPath(b.allocator, "ANDROID_HOME") orelse return error.NO_ANDROID_HOME;
-    const ndk_path = try ndk.getPath(b, .{ .android_home = android_home });
-    const java_home = zbk.getEnvPath(b.allocator, "JAVA_HOME") orelse return error.NO_JAVA_HOME;
+    const sdk_info = try zbk.android.SdkInfo.init(b.allocator, if (target.result.os.tag == .windows) .androidstudio else .opt);
 
     // build libmain.so
     const lib = b.addLibrary(.{
@@ -30,7 +27,7 @@ pub fn build(b: *std.Build) !void {
     });
     b.installArtifact(lib);
     // error: error: unable to provide libc for target 'aarch64-linux.5.10...6.16-android.29'
-    const libc_file = try ndk.LibCFile.make(b, ndk_path, target, API_LEVEL);
+    const libc_file = try zbk.android.ndk.LibCFile.make(b, sdk_info.ndk_path, target, API_LEVEL);
     // for compile
     lib.addSystemIncludePath(.{ .cwd_relative = libc_file.include_dir });
     lib.addSystemIncludePath(.{ .cwd_relative = libc_file.sys_include_dir });
@@ -42,8 +39,7 @@ pub fn build(b: *std.Build) !void {
 
     // android sdk
     const apk_builder = try zbk.android.ApkBuilder.init(b, .{
-        .android_home = android_home,
-        .java_home = java_home,
+        .sdk_info = sdk_info,
         .api_level = API_LEVEL,
     });
 
@@ -52,7 +48,11 @@ pub fn build(b: *std.Build) !void {
 
     // make apk from
     const apk = apk_builder.makeApk(b, .{
-        .android_manifest = try apk_builder.generateAndroidManifest(b, PKG_NAME, lib.name),
+        .android_manifest = try zbk.android.generateAndroidManifest(b, .{
+            .pkg_name = PKG_NAME,
+            .api_level = API_LEVEL,
+            .android_label = lib.name,
+        }),
         .resource_dir = b.path("res"),
         .keystore_password = keystore_password,
         .keystore_file = keystore.output,

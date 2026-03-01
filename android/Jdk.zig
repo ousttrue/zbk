@@ -1,11 +1,21 @@
 const std = @import("std");
+const SdkInfo = @import("SdkInfo.zig");
 
 bin_path: []const u8,
 
-pub fn init(b: *std.Build, java_home: []const u8) !@This() {
-    return @This(){
-        .bin_path = try getJavaBinPath(b, java_home),
-    };
+pub fn init(b: *std.Build, info: SdkInfo) !@This() {
+    switch (info.jdk_location) {
+        .java_home => |java_home| {
+            return @This(){
+                .bin_path = try getJavaBinPath(b, java_home),
+            };
+        },
+        .bin_path => |bin_path| {
+            return @This(){
+                .bin_path = bin_path,
+            };
+        },
+    }
 }
 
 fn getJavaBinPath(b: *std.Build, java_home: []const u8) ![]const u8 {
@@ -30,7 +40,7 @@ pub fn jar_extract(
     resources_apk: std.Build.LazyPath,
 ) *std.Build.Step.Run {
     const jar = b.addSystemCommand(&.{
-        b.pathResolve(&.{ self.bin_path, "jar.exe" }),
+        b.pathResolve(&.{ self.bin_path, "jar" }),
     });
     jar.setName("jar --extract");
     if (b.verbose) {
@@ -53,7 +63,7 @@ pub fn jar_compress(
     apk_contents_dir: std.Build.LazyPath,
 ) RunOutput {
     const jar = b.addSystemCommand(&.{
-        b.pathResolve(&.{ self.bin_path, "jar.exe" }),
+        b.pathResolve(&.{ self.bin_path, "jar" }),
     });
     jar.setName("jar compress");
 
@@ -87,7 +97,7 @@ pub fn jar_update(
 
     // Update zip with files that are not compressed (ie. resources.arsc)
     const jar = b.addSystemCommand(&.{
-        b.pathResolve(&.{ self.bin_path, "jar.exe" }),
+        b.pathResolve(&.{ self.bin_path, "jar" }),
     });
     jar.setName("jar update");
     jar.setCwd(uncompressed);
@@ -135,7 +145,7 @@ pub const KeyStore = struct {
     ) RunOutput {
         const keytool = b.addSystemCommand(&.{
             // https://docs.oracle.com/en/java/javase/17/docs/specs/man/keytool.html
-            b.fmt("{s}/keytool.exe", .{java_bin_path}),
+            b.fmt("{s}/keytool", .{java_bin_path}),
             "-genkey",
             "-v",
         });

@@ -2,6 +2,7 @@ const std = @import("std");
 const BuildTools = @import("BuildTools.zig");
 const PlatformTools = @import("PlatformTools.zig");
 const Jdk = @import("Jdk.zig");
+const SdkInfo = @import("SdkInfo.zig");
 
 jdk: Jdk,
 build_tools: BuildTools,
@@ -10,8 +11,7 @@ api_level: u8,
 root_jar: []const u8,
 
 pub const ApkBuilderOpts = struct {
-    android_home: []const u8,
-    java_home: []const u8,
+    sdk_info: SdkInfo,
     api_level: u8,
 };
 
@@ -20,16 +20,16 @@ pub fn init(
     opts: ApkBuilderOpts,
 ) !@This() {
     const root_jar = b.pathResolve(&[_][]const u8{
-        opts.android_home,
+        opts.sdk_info.android_home,
         "platforms",
         b.fmt("android-{}", .{opts.api_level}),
         "android.jar",
     });
 
     return @This(){
-        .jdk = try Jdk.init(b, opts.java_home),
-        .build_tools = try BuildTools.init(b, opts.android_home),
-        .platform_tools = try PlatformTools.init(b, opts.android_home),
+        .jdk = try Jdk.init(b, opts.sdk_info),
+        .build_tools = try BuildTools.init(b, opts.sdk_info.android_home),
+        .platform_tools = try PlatformTools.init(b, opts.sdk_info.android_home),
         .api_level = opts.api_level,
         .root_jar = root_jar,
     };

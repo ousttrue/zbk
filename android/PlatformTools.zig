@@ -14,7 +14,7 @@ pub fn adb_install(
     apk: std.Build.LazyPath,
 ) *std.Build.Step.Run {
     const run = b.addSystemCommand(&.{
-        b.pathResolve(&.{ self.path, "adb.exe" }),
+        b.pathResolve(&.{ self.path, "adb" }),
         "install",
         "-r",
     });
@@ -30,7 +30,7 @@ pub fn adb_start(
     opts: StartOpts,
 ) *std.Build.Step.Run {
     const run = b.addSystemCommand(&.{
-        b.pathResolve(&.{ self.path, "adb.exe" }),
+        b.pathResolve(&.{ self.path, "adb" }),
         "shell",
         "am",
         "start",

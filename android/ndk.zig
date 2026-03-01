@@ -4,7 +4,7 @@ pub const PathOpts = union(enum) {
     android_home: []const u8,
 };
 
-pub fn getPath(b: *std.Build, opts: PathOpts) ![]const u8 {
+pub fn getPath(allocator: std.mem.Allocator, opts: PathOpts) ![]const u8 {
     switch (opts) {
         .android_home => |android_home| {
             var root = try std.fs.openDirAbsolute(android_home, .{});
@@ -28,7 +28,7 @@ pub fn getPath(b: *std.Build, opts: PathOpts) ![]const u8 {
                 return error.no_ndk;
             }
 
-            return b.fmt("{s}/ndk/{s}", .{ android_home, version });
+            return std.fmt.allocPrint(allocator, "{s}/ndk/{s}", .{ android_home, version });
         },
     }
 }
@@ -74,7 +74,7 @@ pub const LibCFile = struct {
             \\gcc_dir=
         ;
         const triple: []const u8 = try target.result.linuxTriple(b.allocator);
-        const sysroot_dir = b.fmt("{s}/toolchains/llvm/prebuilt/windows-x86_64/sysroot", .{ndk_path});
+        const sysroot_dir = getSysroot(b, ndk_path);
         const include_dir = b.fmt("{s}/usr/include", .{sysroot_dir});
         const sys_include_dir = b.fmt("{s}/usr/include/{s}", .{ sysroot_dir, triple });
         const crt_dir = b.fmt("{s}/usr/lib/{s}/{}", .{ sysroot_dir, triple, android_api_level });
@@ -93,3 +93,10 @@ pub const LibCFile = struct {
         };
     }
 };
+
+fn getSysroot(b: *std.Build, ndk_path: []const u8) []const u8 {
+    return if (b.graph.host.result.os.tag == .windows)
+        b.fmt("{s}/toolchains/llvm/prebuilt/windows-x86_64/sysroot", .{ndk_path})
+    else
+        b.fmt("{s}/toolchains/llvm/prebuilt/linux-x86_64/sysroot", .{ndk_path});
+}

@@ -44,7 +44,7 @@ pub fn aapt2_compile(
     resource: std.Build.LazyPath,
 ) RunOutput {
     const run = b.addSystemCommand(&.{
-        b.pathResolve(&.{ self.path, "aapt2.exe" }),
+        b.pathResolve(&.{ self.path, "aapt2" }),
         "compile",
     });
     run.setName("aapt2 compile --dir");
@@ -70,7 +70,7 @@ pub fn aapt2_link(
     resources_flat_zip: std.Build.LazyPath,
 ) RunOutput {
     const run = b.addSystemCommand(&.{
-        b.pathResolve(&.{ self.path, "aapt2.exe" }),
+        b.pathResolve(&.{ self.path, "aapt2" }),
         "link",
         "-I", // add an existing package to base include set
         root_jar,
@@ -113,7 +113,7 @@ pub fn zipalign(
     //
     // Example: "zipalign -P 16 -f -v 4 infile.apk outfile.apk"
     var run = b.addSystemCommand(&.{
-        b.pathResolve(&.{ self.path, "zipalign.exe" }),
+        b.pathResolve(&.{ self.path, "zipalign" }),
         "-P", // aligns uncompressed .so files to the specified page size in KiB...
         "16", // ... align to 16kb
         "-f", // overwrite existing files
@@ -145,7 +145,7 @@ pub fn apksigner(
     aligned_apk_file: std.Build.LazyPath,
 ) RunOutput {
     const run = b.addSystemCommand(&.{
-        b.pathResolve(&.{ self.path, "apksigner.bat" }),
+        b.pathResolve(&.{ self.path, "apksigner" }),
         "sign",
     });
     run.setName("apksigner");
